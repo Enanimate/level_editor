@@ -1,0 +1,12 @@
+[package]
+name = "gfx"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+winit = "0.30.11"
+anyhow = "1.0.98"
+wgpu = "26.0.1"
+glam = { version = "0.30.5" }
+bytemuck = "1.13"
+wgpu_text = "26.0.0"
