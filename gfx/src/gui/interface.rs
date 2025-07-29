@@ -1,5 +1,7 @@
 use glam::{Vec2, Vec3};
-use wgpu::{util::DeviceExt, Device, Queue};
+use wgpu::{Device, Queue, util::DeviceExt};
+
+use wgpu_text::{glyph_brush::{ab_glyph::{FontRef, PxScale}, Section, Text}, BrushBuilder, TextBrush};
 use winit::dpi::PhysicalSize;
 
 use crate::definitions::Vertex;
@@ -8,6 +10,8 @@ pub struct Interface {
     panels: Vec<Panel>,
     vertex_buffer: Option<wgpu::Buffer>,
     index_buffer: Option<wgpu::Buffer>,
+    brush: Option<TextBrush<FontRef<'static>>>,
+    max_screen_size: Option<PhysicalSize<u32>>
 }
 
 impl Interface {
@@ -16,6 +20,8 @@ impl Interface {
             panels: Vec::new(),
             vertex_buffer: None,
             index_buffer: None,
+            brush: None,
+            max_screen_size: None,
         }
     }
 
@@ -23,68 +29,213 @@ impl Interface {
         self.panels.push(panel);
     }
 
-    pub(crate) fn init_gpu_buffers(&mut self, device: &Device, queue: &Queue, screen_size:PhysicalSize<u32>) {
+    pub fn set_maximized_size(&self) {
+        //if self.max_screen_size.is_none() || 
+    }
+
+    pub(crate) fn init_gpu_buffers(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        screen_size: PhysicalSize<u32>,
+        config: &wgpu::SurfaceConfiguration
+    ) {
         let indices: &[u16] = &[0, 2, 1, 1, 2, 3];
 
-        let total_vertices_needed = self.panels.iter().flat_map(|panel| &panel.elements).count() * 4;
-        let vertex_buffer_size = (total_vertices_needed * std::mem::size_of::<Vertex>()) as wgpu::BufferAddress;
+        let font_bytes = include_bytes!("../../../ComicMono.ttf");
+        self.brush = Some(BrushBuilder::using_font_bytes(font_bytes)
+            .unwrap()
+            .build(device, config.width, config.height, config.format));
+
+        let total_vertices_needed =
+            self.panels.iter().flat_map(|panel| &panel.elements).count() * 4;
+        let vertex_buffer_size =
+            (total_vertices_needed * std::mem::size_of::<Vertex>()) as wgpu::BufferAddress;
 
         self.vertex_buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Vertex Buffer"),
             size: vertex_buffer_size,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false
+            mapped_at_creation: false,
         }));
 
-        self.index_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(&indices),
-            usage: wgpu::BufferUsages::INDEX
-        }));
+        self.index_buffer = Some(
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Index Buffer"),
+                contents: bytemuck::cast_slice(&indices),
+                usage: wgpu::BufferUsages::INDEX,
+            }),
+        );
 
-        self.update_vertices(screen_size, queue);
+        self.update_vertices_and_queue_text(screen_size, queue, device, config);
     }
 
-    pub(crate) fn update_vertices(&self, screen_size:PhysicalSize<u32>, queue: &Queue) {
+    pub(crate) fn update_vertices_and_queue_text(
+        &mut self,
+        screen_size: PhysicalSize<u32>,
+        queue: &Queue,
+        device: &Device,
+        config: &wgpu::SurfaceConfiguration,
+    ) {
         let mut vertex_offset = 0; // Keep track of the current offset in bytes
+        self.brush.as_ref().unwrap().resize_view(screen_size.width as f32, screen_size.height as f32, queue);
 
-        for panel in &self.panels {
-            let (panel_x_min, panel_y_min, panel_x_max, panel_y_max) = panel.calculate_absolute_coordinates(screen_size);
-            let panel_width = panel_x_max - panel_x_min;
-            let panel_height = panel_y_max - panel_y_min;
+        for panel in &mut self.panels {
+            let (panel_x_min_co, panel_y_min_co, panel_x_max_co, panel_y_max_co) =
+                panel.calculate_absolute_coordinates(screen_size);
 
-            for element in &panel.elements {
-                let new_vertices = element.calculate_vertices_relative_to_panel(panel_x_min, panel_y_max, panel_width, panel_height);
+            for element in &mut panel.elements {
+                let new_vertices = element.calculate_vertices_relative_to_panel(
+                    panel_x_min_co,
+                    panel_y_min_co,
+                    panel_x_max_co,
+                    panel_y_max_co,
+                );
                 let vertex_data_slice = bytemuck::cast_slice(&new_vertices);
                 let vertex_data_size = vertex_data_slice.len() as wgpu::BufferAddress;
+                let text_data = Self::text_alignment(
+                    element.start_coordinate.x, 
+                    element.start_coordinate.y, 
+                    element.end_coordinate.x, 
+                    element.end_coordinate.y, 
+                    panel_x_min_co, 
+                    panel_y_min_co, 
+                    panel_x_max_co, 
+                    panel_y_max_co, 
+                    screen_size,
+                    &element.text_alignment.as_ref().unwrap()
+                );
+                Self::text(text_data, &new_vertices, screen_size, device, config, queue, self.brush.as_mut().unwrap());
 
-                queue.write_buffer(self.vertex_buffer.as_ref().unwrap(), vertex_offset, vertex_data_slice);
+                queue.write_buffer(
+                    self.vertex_buffer.as_ref().unwrap(),
+                    vertex_offset,
+                    vertex_data_slice,
+                );
 
                 vertex_offset += vertex_data_size; // Increment offset for the next element
             }
         }
     }
 
-    pub(crate) fn render(&self, renderpass: &mut wgpu::RenderPass) {
+    fn text_alignment(ex_0: f32, ey_0: f32, ex_1: f32, ey_1: f32, px_0: f32, py_0: f32, px_1: f32, py_1: f32, screen_size: PhysicalSize<u32>, alignment: &Alignment) -> ((f32, f32), f32){
+        let screen_x_center = screen_size.width as f32 / 2.0;
+        let screen_y_center = screen_size.height as f32 / 2.0;
+        let scale = 1.0;
+
+        //let element_abs_y_top_center_origin = panel_y_max_center_origin - self.start_coordinate.y * (panel_y_max_center_origin - panel_y_min_center_origin);
+        //let element_abs_y_bottom_center_origin = panel_y_max_center_origin - self.end_coordinate.y * (panel_y_max_center_origin - panel_y_min_center_origin);
+
+        match (&alignment.horizontal, &alignment.vertical) {
+            (HorizontalAlignment::Left, VerticalAlignment::Top) => {
+                let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
+                let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
+                return ((x, y), scale);
+            }
+            (HorizontalAlignment::Left, VerticalAlignment::Center) => {
+                // Not quite there, look later
+                let half_y_length = ((py_1 - ey_0 * (py_1 - py_0)) - (py_1 - ey_1 * (py_1 - py_0))) / 2.0;
+                let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
+                let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
+                return ((x, y + half_y_length - 30.0), scale);
+            }
+            (HorizontalAlignment::Left, VerticalAlignment::Bottom) => {
+                todo!();
+                let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
+                let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
+                return ((x, y), scale);
+            }
+
+            (HorizontalAlignment::Center, VerticalAlignment::Top) => {
+                todo!();
+                let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
+                let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
+                return ((x, y), scale);
+            }
+            (HorizontalAlignment::Center, VerticalAlignment::Center) => {
+                todo!();
+                let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
+                let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
+                return ((x, y), scale);
+            }
+            (HorizontalAlignment::Center, VerticalAlignment::Bottom) => {
+                todo!();
+                let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
+                let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
+                return ((x, y), scale);
+            }
+
+            (HorizontalAlignment::Right, VerticalAlignment::Top) => {
+                todo!();
+                let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
+                let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
+                return ((x, y), scale);
+            }
+            (HorizontalAlignment::Right, VerticalAlignment::Center) => {
+                todo!();
+                let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
+                let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
+                return ((x, y), scale);
+            }
+            (HorizontalAlignment::Right, VerticalAlignment::Bottom) => {
+                todo!();
+                let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
+                let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
+                return ((x, y), scale);
+            }
+        }
+    }
+
+    fn text<'a>(text_data: ((f32, f32), f32), vertices: &[Vertex], screen_size: PhysicalSize<u32>, device: &Device, config: &wgpu::SurfaceConfiguration, queue: &Queue, brush: &mut TextBrush<FontRef<'a>>) {
+        let (text_coordinate, scale) = text_data;
+
+//[text_x_co + vertex_x_offset, text_y_co - vertex_y_offset]
+        let text_x_co = screen_size.width as f32 / 2.0;
+        let text_y_co = screen_size.height as f32 / 2.0;
+        let vertex_x_offset = vertices[0].position.x;
+        let vertex_y_offset = vertices[0].position.y;
+        println!("{} {}", text_x_co + vertex_x_offset, text_y_co - vertex_y_offset);
+        let section = Section::builder()
+            .with_screen_position(text_coordinate)
+            //.with_bounds([20.0, 20.0])
+            .with_text(vec![
+                Text::new("Hello, WGPU Text 26.0.0")
+                    .with_scale(PxScale {x: 60.0, y: 60.0})
+                    .with_color([1.0, 1.0, 1.0, 1.0]),
+            ]);
+        brush.queue(device, queue, [section]).unwrap();
+    }
+
+    pub(crate) fn render<'a>(&'a mut self, renderpass: &mut wgpu::RenderPass<'a>, device: &Device, config: &wgpu::SurfaceConfiguration) {
         let vertex_buffer = match &self.vertex_buffer {
             Some(buffer) => buffer,
-            None => { 
+            None => {
                 eprintln!("Warning: GUI vertex buffer not initialized. Skipping Render...");
                 return;
             }
         };
-        renderpass.set_index_buffer(self.index_buffer.as_ref().unwrap().slice(..), wgpu::IndexFormat::Uint16);
+        renderpass.set_index_buffer(
+            self.index_buffer.as_ref().unwrap().slice(..),
+            wgpu::IndexFormat::Uint16,
+        );
 
         let mut vertex_offset_in_buffer = 0;
         let vertex_size_bytes = std::mem::size_of::<Vertex>() as wgpu::BufferAddress;
         let quad_vertices_count = 4;
         for _panel in 0..self.panels.len() {
             for _element in 0..self.panels[_panel].elements.len() {
-                renderpass.set_vertex_buffer(0, vertex_buffer.slice(vertex_offset_in_buffer .. (vertex_offset_in_buffer + quad_vertices_count * vertex_size_bytes)));
+                renderpass.set_vertex_buffer(
+                    0,
+                    vertex_buffer.slice(
+                        vertex_offset_in_buffer
+                            ..(vertex_offset_in_buffer + quad_vertices_count * vertex_size_bytes),
+                    ),
+                );
                 renderpass.draw_indexed(0..6, 0, 0..1);
                 vertex_offset_in_buffer += quad_vertices_count * vertex_size_bytes;
             }
         }
+        self.brush.as_mut().unwrap().draw(renderpass);
     }
 }
 
@@ -96,10 +247,10 @@ pub struct Panel {
 
 impl Panel {
     pub fn new(start_coordinate: Coordinate, end_coordinate: Coordinate) -> Self {
-        Self { 
+        Self {
             elements: Vec::new(),
             start_coordinate,
-            end_coordinate, 
+            end_coordinate,
         }
     }
 
@@ -107,7 +258,10 @@ impl Panel {
         self.elements.push(element);
     }
 
-    fn calculate_absolute_coordinates(&self, screen_size: PhysicalSize<u32>) -> (f32, f32, f32, f32) {
+    fn calculate_absolute_coordinates(
+        &self,
+        screen_size: PhysicalSize<u32>,
+    ) -> (f32, f32, f32, f32) {
         let screen_width_full = screen_size.width as f32;
         let screen_height_full = screen_size.height as f32;
 
@@ -133,6 +287,8 @@ pub struct Element {
     start_coordinate: Coordinate,
     end_coordinate: Coordinate,
     color: Color,
+    text: Option<String>,
+    text_alignment: Option<Alignment>,
 }
 
 impl Element {
@@ -141,25 +297,63 @@ impl Element {
             start_coordinate,
             end_coordinate,
             color,
+            text: None,
+            text_alignment: None,
         }
     }
 
-    fn calculate_vertices_relative_to_panel(&self, panel_x_min: f32, panel_y_max: f32, panel_width: f32, panel_height: f32) -> [Vertex; 4] {
-        let elem_local_x_min_rel = self.start_coordinate.x;
-        let elem_local_x_max_rel = self.end_coordinate.x;
-        let elem_local_y_min_rel = self.start_coordinate.y;
-        let elem_local_y_max_rel = self.end_coordinate.y;
+    pub fn with_text(mut self, alignment: Alignment) -> Self {
+        self.text = Some("test".to_string());
+        self.text_alignment = Some(alignment);
+        self
+    }
 
-        let elem_px_x_min = panel_x_min + elem_local_x_min_rel * panel_width;
-        let elem_px_x_max = panel_x_min + elem_local_x_max_rel * panel_width;
-        let elem_px_y_max = panel_y_max - (elem_local_y_min_rel * panel_height);
-        let elem_px_y_min = panel_y_max - (elem_local_y_max_rel * panel_height);
+    fn calculate_vertices_relative_to_panel(
+        &mut self,
+        panel_x_min_center_origin: f32,
+        panel_y_min_center_origin: f32,
+        panel_x_max_center_origin: f32,
+        panel_y_max_center_origin: f32,
+    ) -> [Vertex; 4] {
+
+        // Convert element's local coordinates to panel's absolute coordinates (center-origin)
+        let element_abs_x_min_center_origin = panel_x_min_center_origin
+            + self.start_coordinate.x * (panel_x_max_center_origin - panel_x_min_center_origin);
+        let element_abs_x_max_center_origin = panel_x_min_center_origin
+            + self.end_coordinate.x * (panel_x_max_center_origin - panel_x_min_center_origin);
+
+        // Your Y-axis is inverted here: y_max_center_origin is top, y_min_center_origin is bottom
+        // elem_local_y_min_rel corresponds to the top of the element relative to panel's top (0.0 to 1.0)
+        // elem_local_y_max_rel corresponds to the bottom of the element relative to panel's top (0.0 to 1.0)
+        let element_abs_y_top_center_origin = panel_y_max_center_origin
+            - self.start_coordinate.y * (panel_y_max_center_origin - panel_y_min_center_origin);
+        let element_abs_y_bottom_center_origin = panel_y_max_center_origin
+            - self.end_coordinate.y * (panel_y_max_center_origin - panel_y_min_center_origin);
+
+        // Calculate the vertices for the mesh (these should match your rendering pipeline)
+        // These are typically NDC, so leave them as is if your Vertex shader handles center-origin NDC.
+        let vtx_x_min = element_abs_x_min_center_origin;
+        let vtx_x_max = element_abs_x_max_center_origin;
+        let vtx_y_top = element_abs_y_top_center_origin; // The Y coordinate for the top edge of the element
+        let vtx_y_bottom = element_abs_y_bottom_center_origin; // The Y coordinate for the bottom edge of the element
 
         [
-            Vertex { position: Vec2::new(elem_px_x_min, elem_px_y_max), color: self.color.into_vec3() }, // Top-Left
-            Vertex { position: Vec2::new(elem_px_x_max, elem_px_y_max), color: self.color.into_vec3() }, // Top-Right
-            Vertex { position: Vec2::new(elem_px_x_min, elem_px_y_min), color: self.color.into_vec3() }, // Bottom-Left
-            Vertex { position: Vec2::new(elem_px_x_max, elem_px_y_min), color: self.color.into_vec3() }, // Bottom-Right
+            Vertex {
+                position: Vec2::new(vtx_x_min, vtx_y_top),
+                color: self.color.into_vec3(),
+            }, // Top-Left
+            Vertex {
+                position: Vec2::new(vtx_x_max, vtx_y_top),
+                color: self.color.into_vec3(),
+            }, // Top-Right
+            Vertex {
+                position: Vec2::new(vtx_x_min, vtx_y_bottom),
+                color: self.color.into_vec3(),
+            }, // Bottom-Left
+            Vertex {
+                position: Vec2::new(vtx_x_max, vtx_y_bottom),
+                color: self.color.into_vec3(),
+            }, // Bottom-Right
         ]
     }
 }
@@ -171,10 +365,7 @@ pub struct Coordinate {
 
 impl Coordinate {
     pub fn new(x: f32, y: f32) -> Self {
-        Self { 
-            x, 
-            y 
-        }
+        Self { x, y }
     }
 }
 
@@ -186,14 +377,27 @@ pub struct Color {
 
 impl Color {
     pub fn new(r: f32, g: f32, b: f32) -> Self {
-        Self { 
-            r, 
-            g, 
-            b, 
-        }
+        Self { r, g, b }
     }
 
     fn into_vec3(&self) -> Vec3 {
         Vec3::new(self.r, self.g, self.b)
     }
+}
+
+pub struct Alignment {
+    pub vertical: VerticalAlignment,
+    pub horizontal: HorizontalAlignment
+}
+
+pub enum VerticalAlignment {
+    Top,
+    Center,
+    Bottom
+}
+
+pub enum HorizontalAlignment {
+    Left,
+    Center,
+    Right
 }

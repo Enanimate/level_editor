@@ -134,7 +134,7 @@ impl RenderState {
             .set_shader_module("shader.wgsl", "vs_main", "fs_main")
             .build("Render Pipeline");
 
-        interface.init_gpu_buffers(&device, &queue, size);
+        interface.init_gpu_buffers(&device, &queue, size, &config);
         
 
         const FONT_BYTES: &[u8] = include_bytes!("../../Comic Sans MS.ttf");
@@ -197,7 +197,7 @@ impl RenderState {
                 view_proj: self.camera_2d.build_view_projection_matrix().to_cols_array_2d(),
             }]));
 
-            self.interface.update_vertices(self.size, &self.queue);
+            self.interface.update_vertices_and_queue_text(self.size, &self.queue, &self.device, &self.config);
 
             self.text_brush.resize_view(width as f32, height as f32, &self.queue);
             self.queue_all_text();
@@ -216,7 +216,7 @@ impl RenderState {
                     .with_color([1.0, 1.0, 1.0, 1.0]),
             ]);
 
-        let _ = self.text_brush.queue(&self.device, &self.queue, &[hello_text_section]);
+        self.text_brush.queue(&self.device, &self.queue, &[hello_text_section]).unwrap();
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -263,7 +263,7 @@ impl RenderState {
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.camera_bind_group_2d, &[]);
-        self.interface.render(&mut render_pass);
+        self.interface.render(&mut render_pass, &self.device, &self.config);
 
         self.text_brush.draw(&mut render_pass);
 

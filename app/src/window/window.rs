@@ -16,8 +16,8 @@ impl ApplicationHandler<RenderState> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
 
         #[allow(unused_mut)]
-        let mut window_attributes = Window::default_attributes()
-            .with_maximized(true);
+        let mut window_attributes = Window::default_attributes();
+            //.with_maximized(true);
 
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
 
