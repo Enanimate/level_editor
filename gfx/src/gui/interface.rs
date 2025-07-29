@@ -67,7 +67,7 @@ impl Interface {
             }),
         );
 
-        self.update_vertices_and_queue_text(screen_size, queue, device, config);
+        self.update_vertices_and_queue_text(screen_size, queue, device);
     }
 
     pub(crate) fn update_vertices_and_queue_text(
@@ -75,8 +75,8 @@ impl Interface {
         screen_size: PhysicalSize<u32>,
         queue: &Queue,
         device: &Device,
-        config: &wgpu::SurfaceConfiguration,
     ) {
+        let mut sections_to_queue: Vec<Section> = Vec::new();
         let mut vertex_offset = 0; // Keep track of the current offset in bytes
         self.brush.as_ref().unwrap().resize_view(screen_size.width as f32, screen_size.height as f32, queue);
 
@@ -93,20 +93,6 @@ impl Interface {
                 );
                 let vertex_data_slice = bytemuck::cast_slice(&new_vertices);
                 let vertex_data_size = vertex_data_slice.len() as wgpu::BufferAddress;
-                let text_data = Self::text_alignment(
-                    element.start_coordinate.x, 
-                    element.start_coordinate.y, 
-                    element.end_coordinate.x, 
-                    element.end_coordinate.y, 
-                    panel_x_min_co, 
-                    panel_y_min_co, 
-                    panel_x_max_co, 
-                    panel_y_max_co, 
-                    screen_size,
-                    &element.text_alignment.as_ref().unwrap(),
-                    element.text.clone().unwrap(),
-                );
-                Self::text(text_data, &new_vertices, screen_size, device, config, queue, self.brush.as_mut().unwrap());
 
                 queue.write_buffer(
                     self.vertex_buffer.as_ref().unwrap(),
@@ -115,35 +101,64 @@ impl Interface {
                 );
 
                 vertex_offset += vertex_data_size; // Increment offset for the next element
+
+                if let (Some(text_content), Some(text_align)) = (
+                    &element.text,
+                    &element.text_alignment,
+                ) {
+                    let ((adjusted_x, adjusted_y), _scale) = Self::text_alignment(
+                        element.start_coordinate.x, 
+                        element.start_coordinate.y, 
+                        element.end_coordinate.x, 
+                        element.end_coordinate.y, 
+                        panel_x_min_co, 
+                        panel_y_min_co, 
+                        panel_x_max_co, 
+                        panel_y_max_co, 
+                        screen_size,
+                        text_align,
+                        text_content,
+                    );
+                    let text_content_str = text_content.as_str();
+
+                    let section = Section::builder()
+                        .with_screen_position([adjusted_x, adjusted_y])
+                        .with_text(vec![
+                            Text::new(text_content_str)
+                                .with_scale(PxScale {x: 30.0, y: 30.0})
+                                .with_color([1.0, 1.0, 1.0, 1.0]),
+                        ]);
+                    sections_to_queue.push(section);
+                }
             }
+        }
+        if !sections_to_queue.is_empty() {
+            self.brush.as_mut().unwrap().queue(device, queue, sections_to_queue).unwrap();
         }
     }
 
-    fn text_alignment(ex_0: f32, ey_0: f32, ex_1: f32, ey_1: f32, px_0: f32, py_0: f32, px_1: f32, py_1: f32, screen_size: PhysicalSize<u32>, alignment: &Alignment, text: String) -> ((f32, f32), f32, String){
+    fn text_alignment(ex_0: f32, ey_0: f32, ex_1: f32, ey_1: f32, px_0: f32, py_0: f32, px_1: f32, py_1: f32, screen_size: PhysicalSize<u32>, alignment: &Alignment, text: &str) -> ((f32, f32), f32){
         let screen_x_center = screen_size.width as f32 / 2.0;
         let screen_y_center = screen_size.height as f32 / 2.0;
         let scale = 1.0;
-
-        //let element_abs_y_top_center_origin = panel_y_max_center_origin - self.start_coordinate.y * (panel_y_max_center_origin - panel_y_min_center_origin);
-        //let element_abs_y_bottom_center_origin = panel_y_max_center_origin - self.end_coordinate.y * (panel_y_max_center_origin - panel_y_min_center_origin);
 
         match (&alignment.horizontal, &alignment.vertical) {
             (HorizontalAlignment::Left, VerticalAlignment::Top) => {
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
-                return ((x, y), scale, text);
+                return ((x, y), scale);
             }
             (HorizontalAlignment::Left, VerticalAlignment::Center) => {
                 // Not quite there, look later
                 let half_y_length = ((py_1 - ey_0 * (py_1 - py_0)) - (py_1 - ey_1 * (py_1 - py_0))) / 2.0;
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
-                return ((x, y + half_y_length - 30.0), scale, text);
+                return ((x, y + half_y_length - 30.0), scale);
             }
             (HorizontalAlignment::Left, VerticalAlignment::Bottom) => {
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_1 * (py_1 - py_0));
-                return ((x, y - 30.0), scale, text);
+                return ((x, y - 30.0), scale);
             }
 
 
@@ -151,67 +166,66 @@ impl Interface {
             //let element_abs_x_min_center_origin = panel_x_min_center_origin + self.start_coordinate.x * (panel_x_max_center_origin - panel_x_min_center_origin);
             //let element_abs_x_max_center_origin = panel_x_min_center_origin + self.end_coordinate.x * (panel_x_max_center_origin - panel_x_min_center_origin);
             (HorizontalAlignment::Center, VerticalAlignment::Top) => {
-                let text_offset = text.chars().count() as f32 * 15.0;
-                let half_x_length = (px_0 + ex_1 * (px_1 - px_0)) - (px_0 + ex_0 * (px_1 - px_0));
+                let text_offset = (text.chars().count() as f32 * 15.0) / 2.0;
+
+                let half_x_length = ((px_0 + ex_1 * (px_1 - px_0)) - (px_0 + ex_0 * (px_1 - px_0))) / 2.0;
+
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
-                return ((x + half_x_length - text_offset, y), scale, text);
+                return ((x + half_x_length - text_offset, y), scale);
             }
             (HorizontalAlignment::Center, VerticalAlignment::Center) => {
-                todo!();
+                let text_offset = (text.chars().count() as f32 * 15.0) / 2.0;
+
+                let half_x_length = ((px_0 + ex_1 * (px_1 - px_0)) - (px_0 + ex_0 * (px_1 - px_0))) / 2.0;
+                let half_y_length = ((py_1 - ey_0 * (py_1 - py_0)) - (py_1 - ey_1 * (py_1 - py_0))) / 2.0;
+
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
-                return ((x, y), scale, text);
+                return ((x + half_x_length - text_offset, y + half_y_length - 30.0), scale);
             }
             (HorizontalAlignment::Center, VerticalAlignment::Bottom) => {
-                todo!();
+                let text_offset = (text.chars().count() as f32 * 15.0) / 2.0;
+                
+                let half_x_length = ((px_0 + ex_1 * (px_1 - px_0)) - (px_0 + ex_0 * (px_1 - px_0))) / 2.0;
+
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
-                let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
-                return ((x, y), scale, text);
+                let y = screen_y_center - (py_1 - ey_1 * (py_1 - py_0));
+                return ((x + half_x_length - text_offset, y - 30.0), scale);
             }
 
             (HorizontalAlignment::Right, VerticalAlignment::Top) => {
-                todo!();
+                let text_offset = text.chars().count() as f32 * 15.0;
+
+                let half_x_length = (px_0 + ex_1 * (px_1 - px_0)) - (px_0 + ex_0 * (px_1 - px_0));
+
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
-                return ((x, y), scale, text);
+                return ((x + half_x_length - text_offset, y), scale);
             }
             (HorizontalAlignment::Right, VerticalAlignment::Center) => {
-                todo!();
+                let text_offset = text.chars().count() as f32 * 15.0;
+
+                let half_x_length = (px_0 + ex_1 * (px_1 - px_0)) - (px_0 + ex_0 * (px_1 - px_0));
+                let half_y_length = ((py_1 - ey_0 * (py_1 - py_0)) - (py_1 - ey_1 * (py_1 - py_0))) / 2.0;
+
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
-                return ((x, y), scale, text);
+                return ((x + half_x_length - text_offset, y + half_y_length - 30.0), scale);
             }
             (HorizontalAlignment::Right, VerticalAlignment::Bottom) => {
-                todo!();
+                let text_offset = text.chars().count() as f32 * 15.0;
+
+                let half_x_length = (px_0 + ex_1 * (px_1 - px_0)) - (px_0 + ex_0 * (px_1 - px_0));
+
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
-                let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
-                return ((x, y), scale, text);
+                let y = screen_y_center - (py_1 - ey_1 * (py_1 - py_0));
+                return ((x + half_x_length - text_offset, y - 30.0), scale);
             }
         }
     }
 
-    fn text<'a>(text_data: ((f32, f32), f32, String), vertices: &[Vertex], screen_size: PhysicalSize<u32>, device: &Device, config: &wgpu::SurfaceConfiguration, queue: &Queue, brush: &mut TextBrush<FontRef<'a>>) {
-        let (text_coordinate, scale, text) = text_data;
-
-//[text_x_co + vertex_x_offset, text_y_co - vertex_y_offset]
-        let text_x_co = screen_size.width as f32 / 2.0;
-        let text_y_co = screen_size.height as f32 / 2.0;
-        let vertex_x_offset = vertices[0].position.x;
-        let vertex_y_offset = vertices[0].position.y;
-        println!("{} {}", text_x_co + vertex_x_offset, text_y_co - vertex_y_offset);
-        let section = Section::builder()
-            .with_screen_position(text_coordinate)
-            //.with_bounds([20.0, 20.0])
-            .with_text(vec![
-                Text::new(&text)
-                    .with_scale(PxScale {x: 30.0, y: 30.0})
-                    .with_color([1.0, 1.0, 1.0, 1.0]),
-            ]);
-        brush.queue(device, queue, [section]).unwrap();
-    }
-
-    pub(crate) fn render<'a>(&'a mut self, renderpass: &mut wgpu::RenderPass<'a>, device: &Device, config: &wgpu::SurfaceConfiguration) {
+    pub(crate) fn render<'a>(&'a mut self, renderpass: &mut wgpu::RenderPass<'a>) {
         let vertex_buffer = match &self.vertex_buffer {
             Some(buffer) => buffer,
             None => {
