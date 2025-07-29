@@ -9,7 +9,7 @@ fn main() {
     let mut panel = Panel::new(Coordinate::new(0.0, 0.0), Coordinate::new(0.6, 0.6));
 
     let element_refac = Element::new(Coordinate::new(0.1, 0.1), Coordinate::new(0.6, 0.6), interface::Color::new(0.0, 0.0, 1.0))
-        .with_text(Alignment { horizontal: HorizontalAlignment::Left, vertical: VerticalAlignment::Bottom});
+        .with_text(Alignment { horizontal: HorizontalAlignment::Center, vertical: VerticalAlignment::Top});
 
     panel.add_element(element_refac);
 
