@@ -2,16 +2,15 @@ use glam::{Vec2, Vec3};
 use wgpu::{Device, Queue, util::DeviceExt};
 
 use wgpu_text::{glyph_brush::{ab_glyph::{FontRef, PxScale}, Section, Text}, BrushBuilder, TextBrush};
-use winit::dpi::PhysicalSize;
+use winit::dpi::{PhysicalPosition, PhysicalSize};
 
-use crate::definitions::Vertex;
+use crate::definitions::{GuiEvent, Vertex};
 
 pub struct Interface {
     panels: Vec<Panel>,
     vertex_buffer: Option<wgpu::Buffer>,
     index_buffer: Option<wgpu::Buffer>,
     brush: Option<TextBrush<FontRef<'static>>>,
-    max_screen_size: Option<PhysicalSize<u32>>
 }
 
 impl Interface {
@@ -21,7 +20,6 @@ impl Interface {
             vertex_buffer: None,
             index_buffer: None,
             brush: None,
-            max_screen_size: None,
         }
     }
 
@@ -33,7 +31,33 @@ impl Interface {
         //if self.max_screen_size.is_none() || 
     }
 
-    pub(crate) fn init_gpu_buffers(
+    pub fn handle_interaction(&mut self, position: PhysicalPosition<f64>, screen_size: PhysicalSize<u32>) -> Option<GuiEvent> {
+
+        let x_position = position.x as f32 / screen_size.width as f32;
+        let y_position = position.y as f32 / screen_size.height as f32;
+        for panel in &self.panels {
+            match (x_position >= panel.start_coordinate.x && x_position <= panel.end_coordinate.x, y_position >= panel.start_coordinate.y && y_position <= panel.end_coordinate.y) {
+                (true, true) => {
+                    let rel_cursor_x = x_position - panel.start_coordinate.x;
+                    let rel_cursor_y = y_position - panel.start_coordinate.y;
+                    for element in &panel.elements {
+                        if element.on_click.is_some() {
+                            match (rel_cursor_x >= element.start_coordinate.x && rel_cursor_x <= element.end_coordinate.x, rel_cursor_y >= element.start_coordinate.y && rel_cursor_y <= element.end_coordinate.y) {
+                                (true, true) => {
+                                    return element.handle_click();
+                                },
+                                _ => ()
+                            }
+                        }
+                    }
+                }
+                _ => ()
+            }
+        }
+        None
+    }
+
+    pub fn init_gpu_buffers(
         &mut self,
         device: &Device,
         queue: &Queue,
@@ -70,7 +94,7 @@ impl Interface {
         self.update_vertices_and_queue_text(screen_size, queue, device);
     }
 
-    pub(crate) fn update_vertices_and_queue_text(
+    pub fn update_vertices_and_queue_text(
         &mut self,
         screen_size: PhysicalSize<u32>,
         queue: &Queue,
@@ -163,8 +187,6 @@ impl Interface {
 
 
 
-            //let element_abs_x_min_center_origin = panel_x_min_center_origin + self.start_coordinate.x * (panel_x_max_center_origin - panel_x_min_center_origin);
-            //let element_abs_x_max_center_origin = panel_x_min_center_origin + self.end_coordinate.x * (panel_x_max_center_origin - panel_x_min_center_origin);
             (HorizontalAlignment::Center, VerticalAlignment::Top) => {
                 let text_offset = (text.chars().count() as f32 * 15.0) / 2.0;
 
@@ -182,7 +204,7 @@ impl Interface {
 
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
-                return ((x + half_x_length - text_offset, y + half_y_length - 30.0), scale);
+                return ((x + half_x_length - text_offset, y + half_y_length - 15.0), scale);
             }
             (HorizontalAlignment::Center, VerticalAlignment::Bottom) => {
                 let text_offset = (text.chars().count() as f32 * 15.0) / 2.0;
@@ -191,9 +213,11 @@ impl Interface {
 
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_1 * (py_1 - py_0));
-                return ((x + half_x_length - text_offset, y - 30.0), scale);
+                return ((x + half_x_length - text_offset, y - 15.0), scale);
             }
 
+
+            
             (HorizontalAlignment::Right, VerticalAlignment::Top) => {
                 let text_offset = text.chars().count() as f32 * 15.0;
 
@@ -211,7 +235,7 @@ impl Interface {
 
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
-                return ((x + half_x_length - text_offset, y + half_y_length - 30.0), scale);
+                return ((x + half_x_length - text_offset, y + half_y_length - 15.0), scale);
             }
             (HorizontalAlignment::Right, VerticalAlignment::Bottom) => {
                 let text_offset = text.chars().count() as f32 * 15.0;
@@ -220,12 +244,13 @@ impl Interface {
 
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_1 * (py_1 - py_0));
-                return ((x + half_x_length - text_offset, y - 30.0), scale);
+                return ((x + half_x_length - text_offset, y - 15.0), scale);
             }
         }
     }
 
-    pub(crate) fn render<'a>(&'a mut self, renderpass: &mut wgpu::RenderPass<'a>) {
+    pub(crate) fn render<'a>(&'a self, renderpass: &mut wgpu::RenderPass<'a>) {
+        //let mut intfc = self.interface.lock().unwrap();
         let vertex_buffer = match &self.vertex_buffer {
             Some(buffer) => buffer,
             None => {
@@ -254,7 +279,7 @@ impl Interface {
                 vertex_offset_in_buffer += quad_vertices_count * vertex_size_bytes;
             }
         }
-        self.brush.as_mut().unwrap().draw(renderpass);
+        self.brush.as_ref().unwrap().draw(renderpass);
     }
 }
 
@@ -308,6 +333,7 @@ pub struct Element {
     color: Color,
     text: Option<String>,
     text_alignment: Option<Alignment>,
+    on_click: Option<Box<dyn Fn() -> Option<GuiEvent> + 'static>>,
 }
 
 impl Element {
@@ -318,13 +344,27 @@ impl Element {
             color,
             text: None,
             text_alignment: None,
+            on_click: None,
         }
+    }
+
+    pub fn with_fn(mut self, func: impl Fn() -> Option<GuiEvent> + 'static) -> Self {
+        self.on_click = Some(Box::new(func));
+        self
     }
 
     pub fn with_text(mut self, alignment: Alignment) -> Self {
         self.text = Some("test".to_string());
         self.text_alignment = Some(alignment);
         self
+    }
+
+    pub fn handle_click(&self) -> Option<GuiEvent> {
+        if let Some(func) = &self.on_click {
+            func()
+        } else {
+            None
+        }
     }
 
     fn calculate_vertices_relative_to_panel(

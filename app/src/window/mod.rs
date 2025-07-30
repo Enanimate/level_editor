@@ -1,1 +1,1 @@
-pub(crate) mod window;
+pub(crate) mod gui;

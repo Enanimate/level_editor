@@ -1,22 +1,85 @@
-use gfx::gui::interface::{self, Alignment, Coordinate, Element, HorizontalAlignment, Interface, Panel, VerticalAlignment};
+#[allow(unused_imports)]
+use std::{error::Error, ffi::{c_char, CStr}, io::Read, path::PathBuf};
+#[allow(unused_imports)]
+use libloading::{Library, Symbol};
+#[allow(unused_imports)]
+use serde::Deserialize;
 
-use crate::window::window::run;
+use crate::window::gui::EditorApp;
 
 mod window;
 
 fn main() {
-    let mut gui_interface = Interface::new();
-    let mut panel = Panel::new(Coordinate::new(0.0, 0.0), Coordinate::new(0.6, 0.6));
+    //load_lib().unwrap();
+    //let mut config_buf: String = String::new();
+    //let file = std::fs::File::open("config.toml").expect("Failed to open config file...").read_to_string(&mut config_buf);
+    //let config = toml::from_str::<Config>(&config_buf).unwrap();
 
-    let element = Element::new(Coordinate::new(0.1, 0.1), Coordinate::new(0.6, 0.6), interface::Color::new(0.0, 0.0, 1.0))
-        .with_text(Alignment { horizontal: HorizontalAlignment::Right, vertical: VerticalAlignment::Bottom});
-    let element_1 = Element::new(Coordinate::new(0.6, 0.6), Coordinate::new(0.9, 0.9), interface::Color::new(0.0, 1.0, 0.0))
-        .with_text(Alignment { horizontal: HorizontalAlignment::Left, vertical: VerticalAlignment::Top});
-
-    panel.add_element(element);
-    panel.add_element(element_1);
-
-    gui_interface.add_panel(panel);
-
-    run(gui_interface).unwrap();
+    //println!("{:?}", config.keys.github);
+    EditorApp::new().unwrap();
+    //run(gui_interface).unwrap();
 }
+
+/*
+fn load_lib() -> Result<(), Box<dyn Error>> {
+    println!("Starting editor...");
+    let lib_path = {
+        let mut path = PathBuf::from("../game_engine_core/target/debug/");
+        if cfg!(target_os = "windows") {
+            path.push("game_engine_core.dll");
+        } else {
+            todo!()
+        }
+        path
+    };
+
+    println!("Attemting to load plugin from {:?}", lib_path);
+
+    let library = unsafe { Library::new(&lib_path)? };
+
+    let get_message: Symbol<unsafe extern "C" fn() -> *mut c_char> = unsafe {
+        library.get(b"get_plugin_message\0")? };
+    println!("'get_plugin_message' symbol found.");
+
+    let free_string: Symbol<unsafe extern "C" fn(*mut c_char)> = unsafe {
+        library.get(b"free_plugin_string\0")? };
+    println!("'free_plugin_string' symbol found.");
+    
+    let message_ptr = unsafe { get_message() };
+
+    if message_ptr.is_null() {
+        eprintln!("Plugin returned a null pointer for the message!");
+        return Err("Plugin message was null".into());
+    }
+
+    let c_str_message = unsafe {
+        CStr::from_ptr(message_ptr) };
+    
+    let rust_message = c_str_message.to_string_lossy().into_owned();
+
+    println!("Message from plugin: {}", rust_message);
+
+    unsafe {
+        free_string(message_ptr);
+    }
+
+    println!("Plugin string memory freed.");
+
+    println!("Editor finished.");
+
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct Config {
+   ip: String,
+   port: Option<u16>,
+   keys: Keys,
+}
+
+#[derive(Deserialize)]
+struct Keys {
+   github: String,
+   travis: Option<String>,
+}
+   */

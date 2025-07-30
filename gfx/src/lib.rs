@@ -1,37 +1,38 @@
-use std::{iter, sync::Arc};
+use std::{iter, sync::{Arc, Mutex}};
 
+use glam::{Vec2, Vec3};
 use wgpu::util::DeviceExt;
-use wgpu_text::{glyph_brush::{ab_glyph::FontRef, Section, Text}, BrushBuilder, TextBrush};
-use winit::{dpi::{PhysicalPosition, PhysicalSize}, event_loop::ActiveEventLoop, keyboard::KeyCode, window::Window};
+use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::{definitions::Vertex, gui::{camera::{Camera2D, Camera2DUniform}, interface::Interface}};
+use crate::{definitions::{GuiState, Vertex}, gui::{camera::{Camera2D, Camera2DUniform}, interface::Interface}};
 
 mod builder;
-mod definitions;
+pub mod definitions;
 pub mod gui;
 
 pub struct RenderState {
     surface: wgpu::Surface<'static>,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+    pub config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
-    pipeline: wgpu::RenderPipeline,
+    ui_pipeline: wgpu::RenderPipeline,
+    preview_pipeline: wgpu::RenderPipeline,
     pub window: Arc<Window>,
 
-    size: PhysicalSize<u32>,
-    interface: Interface,
+    pub size: PhysicalSize<u32>,
 
     camera_2d: Camera2D,
     camera_buffer_2d: wgpu::Buffer,
     camera_bind_group_2d: wgpu::BindGroup,
 
-    text_brush: TextBrush<FontRef<'static>>,
+    triangle_vertex_buffer: wgpu::Buffer,
+    interface_arc: Arc<Mutex<Interface>>,
+    pub gui_state: GuiState,
 }
 
 impl RenderState {
-    pub async fn new(window: Arc<Window>, mut interface: Interface) -> anyhow::Result<RenderState> {
-
+    pub async fn new(window: Arc<Window>, interface_arc: Arc<Mutex<Interface>>) -> anyhow::Result<RenderState> {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -127,58 +128,50 @@ impl RenderState {
             view_formats: vec![],
         };
 
-        let pipeline = builder::PipeLineBuilder::new(&device)
+        let ui_pipeline = builder::PipeLineBuilder::new(&device)
             .set_pixel_format(wgpu::TextureFormat::Bgra8UnormSrgb)
             .add_vertex_buffer_layout(Vertex::desc())
             .add_bind_group_layout(&camera_bind_group_layout_2d)
-            .set_shader_module("shader.wgsl", "vs_main", "fs_main")
+            .set_shader_module("ui_shader.wgsl", "vs_main", "fs_main")
             .build("Render Pipeline");
 
-        interface.init_gpu_buffers(&device, &queue, size, &config);
-        
+        let preview_pipeline = builder::PipeLineBuilder::new(&device)
+            .set_pixel_format(wgpu::TextureFormat::Bgra8UnormSrgb)
+            .add_vertex_buffer_layout(Vertex::desc())
+            .set_shader_module("preview_shader.wgsl", "vs_main", "fs_main")
+            .build("Preview Pipeline");
 
-        const FONT_BYTES: &[u8] = include_bytes!("../../Comic Sans MS.ttf");
+        let triangle_vertices = [
+            Vertex { position: Vec2::new(0.0, 0.5), color: Vec3::new(0.0, 0.0, 1.0) },  // Top (green)
+            Vertex { position: Vec2::new(-0.5, -0.5), color: Vec3::new(0.0, 1.0, 0.0) }, // Bottom-left (blue)
+            Vertex { position: Vec2::new(0.5, -0.5), color: Vec3::new(1.0, 0.0, 0.0) }, // Bottom-right (yellow)
+        ];
 
-        let text_brush = BrushBuilder::using_font_bytes(FONT_BYTES)? // Use as_slice here
-        .build(
-            &device,
-            config.width,
-            config.height,
-            config.format,
-        );
+        let triangle_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Triangle Vertex Buffer"),
+            contents: bytemuck::cast_slice(&triangle_vertices),
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST
+        });
 
-        let mut render_state = Self {
+        Ok(Self {
             surface,
             device,
             queue,
             config,
             is_surface_configured: false,
             window,
-            pipeline,
+            ui_pipeline,
+            preview_pipeline,
 
-            size, 
-            interface,
+            size,
 
             camera_2d,
             camera_buffer_2d,
             camera_bind_group_2d,
-
-            text_brush,
-        };
-
-        render_state.queue_all_text();
-
-        Ok(render_state)
-    }
-
-    pub fn handle_interact(&mut self, position: PhysicalPosition<f64>) {
-        let size = self.size;
-
-        let x_percent_location = position.x as f32 / size.width as f32;
-        let y_percent_location = position.y as f32 / size.height as f32;
-
-        println!("X: {}, Y: {}", x_percent_location, y_percent_location);
-        //self.interface.check_click_position(x_percent_location, y_percent_location);
+            triangle_vertex_buffer,
+            interface_arc,
+            gui_state: GuiState::ProjectView,
+        })
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -196,30 +189,13 @@ impl RenderState {
             bytemuck::cast_slice(&[Camera2DUniform {
                 view_proj: self.camera_2d.build_view_projection_matrix().to_cols_array_2d(),
             }]));
-
-            self.interface.update_vertices_and_queue_text(self.size, &self.queue, &self.device);
-
-            self.text_brush.resize_view(width as f32, height as f32, &self.queue);
-            self.queue_all_text();
+            let mut intfc = self.interface_arc.lock().unwrap();
+            intfc.update_vertices_and_queue_text(self.size, &self.queue, &self.device);
         }
     }
 
-    pub fn queue_all_text(&mut self) {
-        let screen_width = self.size.width as f32;
-        let _screen_height = self.size.height as f32;
-
-        let hello_text_section = Section::builder()
-            .with_screen_position([screen_width / 2.0 - 50.0, 20.0])
-            .with_text(vec![
-                Text::new("Hello, WGPU Text 26.0.0")
-                    .with_scale(30.0)
-                    .with_color([1.0, 1.0, 1.0, 1.0]),
-            ]);
-
-        self.text_brush.queue(&self.device, &self.queue, &[hello_text_section]).unwrap();
-    }
-
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        let interface = self.interface_arc.lock().unwrap();
         self.window.request_redraw();
         //let ui_group = self.interface.get_render_data();
         
@@ -241,7 +217,7 @@ impl RenderState {
 
 
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("Render Pass"),
+            label: Some("UI Render Pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &view,
                 resolve_target: None,
@@ -261,11 +237,16 @@ impl RenderState {
             timestamp_writes: None,
         });
 
-        render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_pipeline(&self.ui_pipeline);
         render_pass.set_bind_group(0, &self.camera_bind_group_2d, &[]);
-        self.interface.render(&mut render_pass);
+        interface.render(&mut render_pass);
 
-        self.text_brush.draw(&mut render_pass);
+        if self.gui_state == GuiState::ProjectView {
+            render_pass.set_pipeline(&self.preview_pipeline);
+            render_pass.set_viewport(self.size.width as f32 / 2.0, self.size.height as f32 / 2.0, self.size.width as f32 / 2.0, self.size.height as f32 / 2.0, 0.0, 1.0);
+            render_pass.set_vertex_buffer(0, self.triangle_vertex_buffer.slice(..));
+            render_pass.draw(0..3, 0..1);
+        }
 
         drop(render_pass);
 
@@ -273,12 +254,5 @@ impl RenderState {
         output.present();
 
         Ok(())
-    }
-    
-    pub fn handle_key(&mut self, event_loop: &ActiveEventLoop, code: KeyCode, is_pressed: bool) {
-        match (code, is_pressed) {
-            (KeyCode::Escape, true) => event_loop.exit(),
-            _ => {}
-        }
     }
 }

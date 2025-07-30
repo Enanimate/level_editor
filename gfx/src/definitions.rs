@@ -32,3 +32,14 @@ impl Vertex {
         }
     }
 }
+
+#[derive(Debug)]
+pub enum GuiEvent {
+    ChangeLayoutToFileExplorer
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum GuiState {
+    ProjectView,
+    FileExplorer,
+}
