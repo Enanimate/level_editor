@@ -1,5 +1,6 @@
 #[allow(unused_imports)]
 use std::{error::Error, ffi::{c_char, CStr}, io::Read, path::PathBuf};
+use gfx::gui::interface::Color;
 #[allow(unused_imports)]
 use libloading::{Library, Symbol};
 #[allow(unused_imports)]
@@ -16,6 +17,7 @@ fn main() {
     //let config = toml::from_str::<Config>(&config_buf).unwrap();
 
     //println!("{:?}", config.keys.github);
+    Color::from_hex("#ff1212");
     EditorApp::new().unwrap();
     //run(gui_interface).unwrap();
 }

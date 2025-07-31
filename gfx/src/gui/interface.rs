@@ -1,3 +1,5 @@
+
+
 use glam::{Vec2, Vec3};
 use wgpu::{Device, Queue, util::DeviceExt};
 
@@ -353,8 +355,8 @@ impl Element {
         self
     }
 
-    pub fn with_text(mut self, alignment: Alignment) -> Self {
-        self.text = Some("test".to_string());
+    pub fn with_text(mut self, alignment: Alignment, text: &str) -> Self {
+        self.text = Some(text.to_string());
         self.text_alignment = Some(alignment);
         self
     }
@@ -418,8 +420,8 @@ impl Element {
 }
 
 pub struct Coordinate {
-    x: f32,
-    y: f32,
+    pub x: f32,
+    pub y: f32,
 }
 
 impl Coordinate {
@@ -441,6 +443,28 @@ impl Color {
 
     fn into_vec3(&self) -> Vec3 {
         Vec3::new(self.r, self.g, self.b)
+    }
+
+    pub fn from_hex(hex_color: &str) -> Self {
+        if let Some(hex) = hex_color.strip_prefix("#") {
+            let mut chars = hex.chars();
+            let red: String = [chars.next().unwrap(), chars.next().unwrap()].iter().collect() ;
+            let green: String = [chars.next().unwrap(), chars.next().unwrap()].iter().collect();
+            let blue: String = [chars.next().unwrap(), chars.next().unwrap()].iter().collect();
+
+            let red_value = u32::from_str_radix(&red, 16).unwrap() as f32 / 255.0;
+            let green_value = u32::from_str_radix(&green, 16).unwrap() as f32 / 255.0;
+            let blue_value = u32::from_str_radix(&blue, 16).unwrap() as f32 / 255.0;
+            
+            Self {
+                r: red_value,
+                g: green_value,
+                b: blue_value
+            }
+        } else {
+            log::error!("Provided parameter was not hex!");
+            panic!()
+        }
     }
 }
 

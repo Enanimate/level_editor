@@ -1,6 +1,6 @@
-use std::sync::{Arc, Mutex};
+use std::{fs, io, sync::{Arc, Mutex}};
 
-use gfx::{definitions::{GuiEvent, GuiState}, gui::interface::{Color, Coordinate, Element, Interface, Panel}, RenderState};
+use gfx::{definitions::{GuiEvent, GuiState}, gui::interface::{Alignment, Color, Coordinate, Element, HorizontalAlignment, Interface, Panel, VerticalAlignment}, RenderState};
 use winit::{application::ApplicationHandler, dpi::PhysicalPosition, event::{MouseButton, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop}, window::Window};
 
 pub struct EditorApp {
@@ -56,7 +56,7 @@ impl EditorApp {
         let mut interface = Interface::new();
         let mut panel = Panel::new(Coordinate::new(0.0, 0.0), Coordinate::new(0.03, 1.0));
         
-        let element1 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 0.05), Color::new(0.0, 0.0, 1.0))
+        let element1 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 0.05), Color::from_hex("#4b84b9ff"))
             .with_fn(|| Some(GuiEvent::ChangeLayoutToFileExplorer));
 
         panel.add_element(element1);
@@ -66,11 +66,22 @@ impl EditorApp {
     }
 
     fn build_file_explorer_interface() -> Interface {
-        let mut interface = Interface::new();
-        let mut panel = Panel::new(Coordinate::new(0.4, 0.4), Coordinate::new(0.6, 0.6));
-        let element = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 1.0), Color::new(1.0, 0.0, 0.0));
+        let entries = fs::read_dir(r".\projects").unwrap()
+        .map(|res| res.map(|e| e.path()))
+        .collect::<Result<Vec<_>, io::Error>>().unwrap();
 
-        panel.add_element(element);
+        let mut panel = Panel::new(Coordinate::new(0.2, 0.1), Coordinate::new(0.8, 0.9));
+        let mut last_coordinate = Coordinate::new(0.0, 0.0);
+        for file in entries {
+            println!("{} {}", last_coordinate.x, last_coordinate.y);
+            let element = Element::new(Coordinate::new(0.0, last_coordinate.y), Coordinate::new(1.0, last_coordinate.y + 0.2), Color::new(0.0, 1.0, 0.0))
+                .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Center}, file.file_name().unwrap().to_str().unwrap());
+            panel.add_element(element);
+            last_coordinate.y = last_coordinate.y + 0.2
+        }
+        
+        let mut interface = Interface::new();
+
         interface.add_panel(panel);
 
         interface

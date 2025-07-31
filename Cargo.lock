@@ -719,6 +719,7 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "glam",
+ "log",
  "wgpu",
  "wgpu_text",
  "winit",
