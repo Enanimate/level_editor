@@ -11,3 +11,4 @@ glam = { version = "0.30.5" }
 bytemuck = "1.13"
 wgpu_text = "26.0.0"
 log = "0.4"
+image = "0.25.6"

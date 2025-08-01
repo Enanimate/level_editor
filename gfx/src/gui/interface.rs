@@ -9,9 +9,9 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use crate::definitions::{GuiEvent, Vertex};
 
 pub struct Interface {
-    panels: Vec<Panel>,
-    vertex_buffer: Option<wgpu::Buffer>,
-    index_buffer: Option<wgpu::Buffer>,
+    pub(crate) panels: Vec<Panel>,
+    pub(crate) vertex_buffer: Option<wgpu::Buffer>,
+    pub(crate) index_buffer: Option<wgpu::Buffer>,
     brush: Option<TextBrush<FontRef<'static>>>,
 }
 
@@ -111,14 +111,33 @@ impl Interface {
                 panel.calculate_absolute_coordinates(screen_size);
 
             for element in &mut panel.elements {
+                let tex_coords = if element.is_textured {
+                    [
+                        Vec2::new(0.0, 0.0),
+                        Vec2::new(1.0, 0.0),
+                        Vec2::new(1.0, 1.0),
+                        Vec2::new(0.0, 1.0),
+                    ]
+                } else {
+                    [
+                        Vec2::new(0.0, 0.0),
+                        Vec2::new(0.0, 0.0),
+                        Vec2::new(0.0, 0.0),
+                        Vec2::new(0.0, 0.0),
+                    ]
+                };
+
                 let new_vertices = element.calculate_vertices_relative_to_panel(
                     panel_x_min_co,
                     panel_y_min_co,
                     panel_x_max_co,
                     panel_y_max_co,
+                    tex_coords
                 );
                 let vertex_data_slice = bytemuck::cast_slice(&new_vertices);
                 let vertex_data_size = vertex_data_slice.len() as wgpu::BufferAddress;
+
+
 
                 queue.write_buffer(
                     self.vertex_buffer.as_ref().unwrap(),
@@ -251,6 +270,14 @@ impl Interface {
         }
     }
 
+    pub(crate)  fn draw_text_brush<'a>( &'a self, renderpass: &mut wgpu::RenderPass<'a>) {
+        if let Some(brush) = self.brush.as_ref() {
+            brush.draw(renderpass);
+        } else {
+            eprintln!("Warning: Brush not initialized for drawing.");
+        }
+    }
+
     pub(crate) fn render<'a>(&'a self, renderpass: &mut wgpu::RenderPass<'a>) {
         //let mut intfc = self.interface.lock().unwrap();
         let vertex_buffer = match &self.vertex_buffer {
@@ -286,7 +313,7 @@ impl Interface {
 }
 
 pub struct Panel {
-    elements: Vec<Element>,
+    pub(crate) elements: Vec<Element>,
     start_coordinate: Coordinate,
     end_coordinate: Coordinate,
 }
@@ -336,6 +363,7 @@ pub struct Element {
     text: Option<String>,
     text_alignment: Option<Alignment>,
     on_click: Option<Box<dyn Fn() -> Option<GuiEvent> + 'static>>,
+    pub(crate) is_textured: bool
 }
 
 impl Element {
@@ -347,6 +375,7 @@ impl Element {
             text: None,
             text_alignment: None,
             on_click: None,
+            is_textured: false,
         }
     }
 
@@ -358,6 +387,11 @@ impl Element {
     pub fn with_text(mut self, alignment: Alignment, text: &str) -> Self {
         self.text = Some(text.to_string());
         self.text_alignment = Some(alignment);
+        self
+    }
+    
+    pub fn with_texture(mut self) -> Self {
+        self.is_textured = true;
         self
     }
 
@@ -375,6 +409,7 @@ impl Element {
         panel_y_min_center_origin: f32,
         panel_x_max_center_origin: f32,
         panel_y_max_center_origin: f32,
+        tex_coords: [Vec2; 4]
     ) -> [Vertex; 4] {
 
         // Convert element's local coordinates to panel's absolute coordinates (center-origin)
@@ -402,18 +437,22 @@ impl Element {
             Vertex {
                 position: Vec2::new(vtx_x_min, vtx_y_top),
                 color: self.color.into_vec3(),
+                tex_coords: tex_coords[0]
             }, // Top-Left
             Vertex {
                 position: Vec2::new(vtx_x_max, vtx_y_top),
                 color: self.color.into_vec3(),
+                tex_coords: tex_coords[1]
             }, // Top-Right
             Vertex {
                 position: Vec2::new(vtx_x_min, vtx_y_bottom),
                 color: self.color.into_vec3(),
+                tex_coords: tex_coords[3]
             }, // Bottom-Left
             Vertex {
                 position: Vec2::new(vtx_x_max, vtx_y_bottom),
                 color: self.color.into_vec3(),
+                tex_coords: tex_coords[2]
             }, // Bottom-Right
         ]
     }

@@ -59,9 +59,17 @@ impl EditorApp {
         let element1 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 0.05), Color::from_hex("#4b84b9ff"))
             .with_fn(|| Some(GuiEvent::ChangeLayoutToFileExplorer));
 
+        let mut panel1 = Panel::new(Coordinate::new(0.2, 0.2), Coordinate::new(0.8, 0.8));
+        
+        let element2 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 1.0), Color::from_hex("#ffffffff"))
+            .with_texture();
+
+        panel1.add_element(element2);
+
         panel.add_element(element1);
 
         interface.add_panel(panel);
+        interface.add_panel(panel1);
         interface
     }
 

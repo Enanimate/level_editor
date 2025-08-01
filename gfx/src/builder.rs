@@ -78,7 +78,7 @@ impl <'a> PipeLineBuilder <'a> {
 
         let render_targets = [Some(ColorTargetState {
             format: self.pixel_format,
-            blend: Some(BlendState::REPLACE),
+            blend: Some(BlendState::ALPHA_BLENDING),
             write_mask: ColorWrites::ALL,
         })];
 
