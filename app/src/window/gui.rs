@@ -3,19 +3,23 @@ use std::{fs, io, sync::{Arc, Mutex}};
 use gfx::{definitions::{GuiEvent, GuiState}, gui::interface::{Alignment, Color, Coordinate, Element, HorizontalAlignment, Interface, Panel, VerticalAlignment}, RenderState};
 use winit::{application::ApplicationHandler, dpi::PhysicalPosition, event::{MouseButton, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop}, window::Window};
 
+use crate::UiAtlas;
+
 pub struct EditorApp {
     layout: GuiState,
     interface: Arc<Mutex<Interface>>,
+    atlas: Option<UiAtlas>,
     render_state: Option<gfx::RenderState>,
     cursor_position: Option<PhysicalPosition<f64>>,
     window_ref: Option<Arc<Window>>,
 }
 
 impl EditorApp {
-    pub fn new() -> anyhow::Result<()> {
+    pub fn new(atlas: UiAtlas) -> anyhow::Result<()> {
         let mut app = EditorApp {
             layout: GuiState::ProjectView,
-            interface: Arc::new(Mutex::new(Interface::new())),
+            interface: Arc::new(Mutex::new(Interface::new(atlas.clone()))),
+            atlas: Some(atlas),
             render_state: None,
             cursor_position: None,
             window_ref: None,
@@ -32,10 +36,11 @@ impl EditorApp {
 
     fn rebuild_interface(&mut self) {
         println!("Rebuilding interface for layout: {:?}", self.layout);
+        let atlas = self.atlas.clone().unwrap();
 
         let new_interface_data = match self.layout {
-            GuiState::ProjectView => Self::build_project_view_interface(),
-            GuiState::FileExplorer => Self::build_file_explorer_interface(),
+            GuiState::ProjectView => Self::build_project_view_interface(atlas),
+            GuiState::FileExplorer => Self::build_file_explorer_interface(atlas),
         };
 
         if let Some(rs) = self.render_state.as_mut() {
@@ -52,17 +57,18 @@ impl EditorApp {
         }
     }
 
-    fn build_project_view_interface() -> Interface {
-        let mut interface = Interface::new();
+    fn build_project_view_interface(atlas: UiAtlas) -> Interface {
+        let mut interface = Interface::new(atlas);
         let mut panel = Panel::new(Coordinate::new(0.0, 0.0), Coordinate::new(0.03, 1.0));
         
         let element1 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 0.05), Color::from_hex("#4b84b9ff"))
+            .with_texture("solid")
             .with_fn(|| Some(GuiEvent::ChangeLayoutToFileExplorer));
 
         let mut panel1 = Panel::new(Coordinate::new(0.2, 0.2), Coordinate::new(0.8, 0.8));
         
         let element2 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 1.0), Color::from_hex("#ffffffff"))
-            .with_texture();
+            .with_texture("happy-tree");
 
         panel1.add_element(element2);
 
@@ -73,7 +79,7 @@ impl EditorApp {
         interface
     }
 
-    fn build_file_explorer_interface() -> Interface {
+    fn build_file_explorer_interface(atlas: UiAtlas) -> Interface {
         let entries = fs::read_dir(r".\projects").unwrap()
         .map(|res| res.map(|e| e.path()))
         .collect::<Result<Vec<_>, io::Error>>().unwrap();
@@ -88,7 +94,7 @@ impl EditorApp {
             last_coordinate.y = last_coordinate.y + 0.2
         }
         
-        let mut interface = Interface::new();
+        let mut interface = Interface::new(atlas);
 
         interface.add_panel(panel);
 

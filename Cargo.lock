@@ -155,6 +155,7 @@ dependencies = [
  "env_logger",
  "font-kit",
  "gfx",
+ "image",
  "libloading",
  "log",
  "pollster",

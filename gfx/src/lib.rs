@@ -31,7 +31,6 @@ pub struct RenderState {
     pub gui_state: GuiState,
 
     gui_uniform_buffer: wgpu::Buffer,
-    gui_material_bind_group_layout: wgpu::BindGroupLayout,
     gui_material_bind_group: wgpu::BindGroup,
 }
 
@@ -132,6 +131,8 @@ impl RenderState {
             view_formats: vec![],
         };
 
+
+
         let initial_uniform_data = GuiUniform { use_texture: 0 };
         let gui_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("GUI Uniform Buffer"),
@@ -139,7 +140,7 @@ impl RenderState {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        let diffuse_bytes = include_bytes!("../../folder-1484.png");
+        let diffuse_bytes = include_bytes!("../../app/atlas.png");
         let diffuse_image = image::load_from_memory(diffuse_bytes).unwrap();
         let diffuse_rgba = diffuse_image.to_rgba8();
 
@@ -307,7 +308,6 @@ impl RenderState {
             interface_arc,
             gui_state: GuiState::ProjectView,
             gui_uniform_buffer,
-            gui_material_bind_group_layout,
             gui_material_bind_group,
         })
     }

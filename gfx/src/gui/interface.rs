@@ -6,31 +6,29 @@ use wgpu::{Device, Queue, util::DeviceExt};
 use wgpu_text::{glyph_brush::{ab_glyph::{FontRef, PxScale}, Section, Text}, BrushBuilder, TextBrush};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 
-use crate::definitions::{GuiEvent, Vertex};
+use crate::definitions::{GuiEvent, UiAtlas, Vertex};
 
 pub struct Interface {
     pub(crate) panels: Vec<Panel>,
     pub(crate) vertex_buffer: Option<wgpu::Buffer>,
     pub(crate) index_buffer: Option<wgpu::Buffer>,
     brush: Option<TextBrush<FontRef<'static>>>,
+    atlas: UiAtlas,
 }
 
 impl Interface {
-    pub fn new() -> Interface {
+    pub fn new(atlas: UiAtlas) -> Interface {
         Self {
             panels: Vec::new(),
             vertex_buffer: None,
             index_buffer: None,
             brush: None,
+            atlas,
         }
     }
 
     pub fn add_panel(&mut self, panel: Panel) {
         self.panels.push(panel);
-    }
-
-    pub fn set_maximized_size(&self) {
-        //if self.max_screen_size.is_none() || 
     }
 
     pub fn handle_interaction(&mut self, position: PhysicalPosition<f64>, screen_size: PhysicalSize<u32>) -> Option<GuiEvent> {
@@ -110,13 +108,32 @@ impl Interface {
             let (panel_x_min_co, panel_y_min_co, panel_x_max_co, panel_y_max_co) =
                 panel.calculate_absolute_coordinates(screen_size);
 
+            let mut tex_coords: [Vec2; 4] = [
+                        Vec2::new(0.0, 0.0),
+                        Vec2::new(0.0, 0.0),
+                        Vec2::new(0.0, 0.0),
+                        Vec2::new(0.0, 0.0),
+                    ];
             for element in &mut panel.elements {
+                for entry in &self.atlas.entries {
+                    if &entry.name == element.texture_name.as_ref().unwrap() {
+                        tex_coords = [
+                         Vec2::new(entry.start_coord.unwrap().0, entry.start_coord.unwrap().1),
+                         Vec2::new(entry.end_coord.unwrap().0, entry.start_coord.unwrap().1),
+                         Vec2::new(entry.end_coord.unwrap().0, entry.end_coord.unwrap().1),
+                         Vec2::new(entry.start_coord.unwrap().0, entry.end_coord.unwrap().1)
+                        ];
+                    }
+                }
+
+                println!("{:?} {:?}", element.texture_name, tex_coords);
+                /*
                 let tex_coords = if element.is_textured {
                     [
                         Vec2::new(0.0, 0.0),
                         Vec2::new(1.0, 0.0),
-                        Vec2::new(1.0, 1.0),
-                        Vec2::new(0.0, 1.0),
+                        Vec2::new(1.0, 0.5),
+                        Vec2::new(0.0, 0.5),
                     ]
                 } else {
                     [
@@ -126,6 +143,7 @@ impl Interface {
                         Vec2::new(0.0, 0.0),
                     ]
                 };
+                */
 
                 let new_vertices = element.calculate_vertices_relative_to_panel(
                     panel_x_min_co,
@@ -363,7 +381,8 @@ pub struct Element {
     text: Option<String>,
     text_alignment: Option<Alignment>,
     on_click: Option<Box<dyn Fn() -> Option<GuiEvent> + 'static>>,
-    pub(crate) is_textured: bool
+    pub(crate) is_textured: bool,
+    texture_name: Option<String>
 }
 
 impl Element {
@@ -376,6 +395,7 @@ impl Element {
             text_alignment: None,
             on_click: None,
             is_textured: false,
+            texture_name: None
         }
     }
 
@@ -390,8 +410,9 @@ impl Element {
         self
     }
     
-    pub fn with_texture(mut self) -> Self {
+    pub fn with_texture(mut self, texture_name: &str) -> Self {
         self.is_textured = true;
+        self.texture_name = Some(texture_name.to_string());
         self
     }
 

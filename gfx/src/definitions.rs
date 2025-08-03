@@ -39,6 +39,63 @@ impl Vertex {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct UiAtlas {
+    pub entries: Vec<UiAtlasTexture>,
+    width: u32,
+    height: u32,
+}
+
+impl UiAtlas {
+    pub fn new(width: u32, height: u32) -> Self {
+        Self {
+            entries: Vec::new(),
+            width,
+            height
+        }
+    }
+
+    pub fn add_entry(&mut self, entry: UiAtlasTexture) {
+        self.entries.push(entry.generate_tex_coords(self.width, self.height));
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UiAtlasTexture {
+    pub name: String,
+    x_start: u32,
+    y_start: u32,
+    image_width: u32,
+    image_height: u32,
+    pub start_coord: Option<(f32, f32)>,
+    pub end_coord: Option<(f32, f32)>
+}
+
+impl UiAtlasTexture {
+    pub fn new(name: String, x_0: u32, y_0: u32, image_width: u32, image_height: u32) -> Self {
+        Self {
+            name,
+            x_start: x_0,
+            y_start: y_0,
+            image_width,
+            image_height,
+            start_coord: None,
+            end_coord: None,
+        }
+    }
+
+    fn generate_tex_coords(mut self, width: u32, height: u32) -> Self {
+        let x0 = self.x_start as f32 / width as f32;
+        let y0 = self.y_start as f32 / height as f32;
+        let x1 = (self.x_start + self.image_width) as f32 / width as f32;
+        let y1 = (self.y_start + self.image_height) as f32 / height as f32;
+
+        self.start_coord = Some((x0, y0));
+        self.end_coord = Some((x1, y1));
+        self
+    }
+}
+
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Zeroable)]
 pub(crate) struct GuiUniform {
