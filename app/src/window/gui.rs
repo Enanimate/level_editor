@@ -1,28 +1,30 @@
 use std::{fs, io, sync::{Arc, Mutex}};
 
-use gfx::{definitions::{GuiEvent, GuiState}, gui::interface::{Alignment, Color, Coordinate, Element, HorizontalAlignment, Interface, Panel, VerticalAlignment}, RenderState};
+use gfx::{definitions::{GuiEvent, GuiMenuState, GuiPageState}, gui::interface::{Alignment, Coordinate, Element, HorizontalAlignment, Interface, Panel, VerticalAlignment}, RenderState};
 use winit::{application::ApplicationHandler, dpi::PhysicalPosition, event::{MouseButton, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop}, window::Window};
 
 use crate::UiAtlas;
 
 pub struct EditorApp {
-    layout: GuiState,
+    layout: GuiPageState,
     interface: Arc<Mutex<Interface>>,
     atlas: Option<UiAtlas>,
     render_state: Option<gfx::RenderState>,
     cursor_position: Option<PhysicalPosition<f64>>,
     window_ref: Option<Arc<Window>>,
+    menu_open: (bool, Option<GuiMenuState>)
 }
 
 impl EditorApp {
     pub fn new(atlas: UiAtlas) -> anyhow::Result<()> {
         let mut app = EditorApp {
-            layout: GuiState::ProjectView,
+            layout: GuiPageState::ProjectView,
             interface: Arc::new(Mutex::new(Interface::new(atlas.clone()))),
             atlas: Some(atlas),
             render_state: None,
             cursor_position: None,
             window_ref: None,
+            menu_open: (false, None)
         };
 
         env_logger::init();
@@ -38,14 +40,19 @@ impl EditorApp {
         println!("Rebuilding interface for layout: {:?}", self.layout);
         let atlas = self.atlas.clone().unwrap();
 
-        let new_interface_data = match self.layout {
-            GuiState::ProjectView => Self::build_project_view_interface(atlas),
-            GuiState::FileExplorer => Self::build_file_explorer_interface(atlas),
+        let page_interface_data = match self.layout {
+            GuiPageState::ProjectView => Self::build_project_view_interface(atlas),
+            GuiPageState::FileExplorer => Self::build_file_explorer_interface(atlas),
+        };
+
+        let modified_interface_data = match self.menu_open {
+            (true, Some(GuiMenuState::SettingsMenu)) => Self::display_settings_menu(page_interface_data),
+            _ => page_interface_data
         };
 
         if let Some(rs) = self.render_state.as_mut() {
             let mut interface_guard = self.interface.lock().unwrap();
-            *interface_guard = new_interface_data;
+            *interface_guard = modified_interface_data;
 
             interface_guard.init_gpu_buffers(&rs.device, &rs.queue, rs.size, &rs.config);
 
@@ -53,26 +60,27 @@ impl EditorApp {
         } else {
             log::warn!("Attempted to rebuild interface but render_state was None. Cannot initialize GPU buffers.");
             let mut interface_guard = self.interface.lock().unwrap();
-            *interface_guard = new_interface_data;
+            *interface_guard = modified_interface_data;
         }
     }
 
     fn build_project_view_interface(atlas: UiAtlas) -> Interface {
         let mut interface = Interface::new(atlas);
-        let mut panel = Panel::new(Coordinate::new(0.0, 0.0), Coordinate::new(0.03, 1.0));
+        let mut panel = Panel::new(Coordinate::new(0.0, 0.0), Coordinate::new(0.03, 1.0))
+            .with_color();
         
-        let element1 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 0.05), Color::from_hex("#4b84b9ff"))
-            .with_texture("solid")
+        let element1 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 0.05), "button")
             .with_fn(|| Some(GuiEvent::ChangeLayoutToFileExplorer));
 
         let mut panel1 = Panel::new(Coordinate::new(0.2, 0.2), Coordinate::new(0.8, 0.8));
         
-        let element2 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 1.0), Color::from_hex("#ffffffff"))
-            .with_texture("happy-tree");
+        let element2 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 1.0), "folder-1484")
+            .with_fn(|| Some(GuiEvent::DisplaySettingsMenu));
 
         panel1.add_element(element2);
 
         panel.add_element(element1);
+
 
         interface.add_panel(panel);
         interface.add_panel(panel1);
@@ -88,7 +96,7 @@ impl EditorApp {
         let mut last_coordinate = Coordinate::new(0.0, 0.0);
         for file in entries {
             println!("{} {}", last_coordinate.x, last_coordinate.y);
-            let element = Element::new(Coordinate::new(0.0, last_coordinate.y), Coordinate::new(1.0, last_coordinate.y + 0.2), Color::new(0.0, 1.0, 0.0))
+            let element = Element::new(Coordinate::new(0.0, last_coordinate.y), Coordinate::new(1.0, last_coordinate.y + 0.2), "")
                 .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Center}, file.file_name().unwrap().to_str().unwrap());
             panel.add_element(element);
             last_coordinate.y = last_coordinate.y + 0.2
@@ -98,6 +106,15 @@ impl EditorApp {
 
         interface.add_panel(panel);
 
+        interface
+    }
+
+    fn display_settings_menu(mut interface: Interface) -> Interface {
+        let element = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 1.0), "solid")
+            .with_color("#ff0000ff");
+        let mut settings_panel = Panel::new(Coordinate::new(0.4, 0.4), Coordinate::new(0.6, 0.6));
+        settings_panel.add_element(element);
+        interface.add_panel(settings_panel);
         interface
     }
 }
@@ -134,7 +151,8 @@ impl ApplicationHandler<RenderState> for EditorApp {
         _window_id: winit::window::WindowId,
         event: WindowEvent,
     ) {
-        let mut needs_layout_change: Option<GuiState> = None;
+        let mut needs_layout_change: Option<GuiPageState> = None;
+        let mut needs_menu_change: Option<(bool, Option<GuiMenuState>)> = None;
         let mut needs_redraw = false;
 
         let current_window_size = if let Some(rs) = self.render_state.as_ref() {
@@ -180,8 +198,13 @@ impl ApplicationHandler<RenderState> for EditorApp {
                             println!("Received GUI event: {:?}", event);
                             match event {
                                 GuiEvent::ChangeLayoutToFileExplorer => {
-                                    if self.layout != GuiState::FileExplorer {
-                                        needs_layout_change = Some(GuiState::FileExplorer);
+                                    if self.layout != GuiPageState::FileExplorer {
+                                        needs_layout_change = Some(GuiPageState::FileExplorer);
+                                    }
+                                }
+                                GuiEvent::DisplaySettingsMenu => {
+                                    if self.menu_open != (true, Some(GuiMenuState::SettingsMenu)) {
+                                        needs_menu_change = Some((true, Some(GuiMenuState::SettingsMenu)));
                                     }
                                 }
                             }
@@ -198,6 +221,12 @@ impl ApplicationHandler<RenderState> for EditorApp {
         if let Some(new_layout) = needs_layout_change {
             self.render_state.as_mut().unwrap().gui_state = new_layout.clone();
             self.layout = new_layout;
+            self.rebuild_interface();
+            needs_redraw = true;
+        }
+
+        if let Some(menu_opened) = needs_menu_change {
+            self.menu_open = menu_opened;
             self.rebuild_interface();
             needs_redraw = true;
         }

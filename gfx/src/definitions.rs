@@ -96,21 +96,19 @@ impl UiAtlasTexture {
     }
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Zeroable)]
-pub(crate) struct GuiUniform {
-    pub(crate) use_texture: u32,
-}
-
-unsafe impl bytemuck::Pod for GuiUniform {}
-
 #[derive(Debug)]
 pub enum GuiEvent {
-    ChangeLayoutToFileExplorer
+    ChangeLayoutToFileExplorer,
+    DisplaySettingsMenu
 }
 
 #[derive(PartialEq, Debug, Clone)]
-pub enum GuiState {
+pub enum GuiPageState {
     ProjectView,
     FileExplorer,
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum GuiMenuState {
+    SettingsMenu
 }

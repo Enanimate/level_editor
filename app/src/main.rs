@@ -44,7 +44,6 @@ fn generate_texture_atlas() -> UiAtlas {
             new_height = image.0.height().max(last_image.unwrap().height().max(new_height));
         }
         new_width += image.0.width();
-        println!(" new width = {} ", new_width);
         last_image = Some(image.0.clone());
     }
 
@@ -53,15 +52,9 @@ fn generate_texture_atlas() -> UiAtlas {
 
     let mut last_coordinate = 0;
     for image in images {
-        if atlas.width() < &image.0.width() + last_coordinate {
-            println!("HERE {} < {} + {}", atlas.width(), &image.0.width(), last_coordinate);
-        }
         atlas_data.add_entry(UiAtlasTexture::new(image.1, last_coordinate, 0, image.0.width(), image.0.height()));
         atlas.copy_from(&image.0, last_coordinate, 0).unwrap();
-        //last_image = Some(image.0);
-        println!("{} + {}", last_coordinate, &image.0.width());
         last_coordinate += &image.0.width();
-        println!("last coordinate = {}", last_coordinate);
     }
 
     atlas.save("./app/atlas.png").unwrap();

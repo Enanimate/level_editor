@@ -4,7 +4,7 @@ use glam::{Vec2, Vec3};
 use wgpu::util::DeviceExt;
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::{definitions::{GuiState, GuiUniform, Vertex}, gui::{camera::{Camera2D, Camera2DUniform}, interface::Interface}};
+use crate::{definitions::{GuiPageState, Vertex}, gui::{camera::{Camera2D, Camera2DUniform}, interface::Interface}};
 
 mod builder;
 pub mod definitions;
@@ -28,9 +28,8 @@ pub struct RenderState {
 
     triangle_vertex_buffer: wgpu::Buffer,
     interface_arc: Arc<Mutex<Interface>>,
-    pub gui_state: GuiState,
+    pub gui_state: GuiPageState,
 
-    gui_uniform_buffer: wgpu::Buffer,
     gui_material_bind_group: wgpu::BindGroup,
 }
 
@@ -131,15 +130,6 @@ impl RenderState {
             view_formats: vec![],
         };
 
-
-
-        let initial_uniform_data = GuiUniform { use_texture: 0 };
-        let gui_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("GUI Uniform Buffer"),
-            contents: bytemuck::cast_slice(&[initial_uniform_data]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
         let diffuse_bytes = include_bytes!("../../app/atlas.png");
         let diffuse_image = image::load_from_memory(diffuse_bytes).unwrap();
         let diffuse_rgba = diffuse_image.to_rgba8();
@@ -211,17 +201,7 @@ impl RenderState {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
-                        binding: 0, //@binding(0) for our GuiUniform
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Buffer { 
-                            ty: wgpu::BufferBindingType::Uniform, 
-                            has_dynamic_offset: false, 
-                            min_binding_size: None 
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1, //@binding(1) for our texture
+                        binding: 0, //@binding(1) for our texture
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         // This should match the filterable field of the
                         // corresponding Texture entry above.
@@ -233,7 +213,7 @@ impl RenderState {
                         count: None,
                     },
                     wgpu::BindGroupLayoutEntry {
-                        binding: 2,
+                        binding: 1,
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                         count: None
@@ -249,14 +229,10 @@ impl RenderState {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: gui_uniform_buffer.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
                         resource: wgpu::BindingResource::TextureView(&diffuse_texture_view),
                     },
                     wgpu::BindGroupEntry {
-                        binding: 2,
+                        binding: 1,
                         resource: wgpu::BindingResource::Sampler(&diffuse_sampler),
                     }
                 ],
@@ -306,8 +282,7 @@ impl RenderState {
             camera_bind_group_2d,
             triangle_vertex_buffer,
             interface_arc,
-            gui_state: GuiState::ProjectView,
-            gui_uniform_buffer,
+            gui_state: GuiPageState::ProjectView,
             gui_material_bind_group,
         })
     }
@@ -383,18 +358,8 @@ impl RenderState {
             let quad_indices_count = 6;
 
             for panel in interface_guard.panels.iter() {
-                for element in panel.elements.iter() {
-                    let use_texture_uniform_value = if element.is_textured {
-                        1u32
-                    } else {
-                        0u32
-                    };
+                for _element in panel.elements.iter() {
 
-                    self.queue.write_buffer(
-                        &self.gui_uniform_buffer, 
-                        0, 
-                    bytemuck::cast_slice(&[GuiUniform { use_texture: use_texture_uniform_value }]),
-                    );
 
                     render_pass.set_vertex_buffer(
                         0, 
@@ -464,7 +429,7 @@ impl RenderState {
         //render_pass.set_bind_group(1, &self.diffuse_bind_group, &[]);
         interface.render(&mut render_pass);
 
-        if self.gui_state == GuiState::ProjectView {
+        if self.gui_state == GuiPageState::ProjectView {
             render_pass.set_pipeline(&self.preview_pipeline);
             render_pass.set_viewport(self.size.width as f32 / 2.0, self.size.height as f32 / 2.0, self.size.width as f32 / 2.0, self.size.height as f32 / 2.0, 0.0, 1.0);
             render_pass.set_vertex_buffer(0, self.triangle_vertex_buffer.slice(..));

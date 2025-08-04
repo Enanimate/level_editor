@@ -72,7 +72,7 @@ impl Interface {
             .build(device, config.width, config.height, config.format));
 
         let total_vertices_needed =
-            self.panels.iter().flat_map(|panel| &panel.elements).count() * 4;
+            (self.panels.iter().flat_map(|panel| &panel.elements).count() * 4) + (self.panels.iter().count() * 4);
         let vertex_buffer_size =
             (total_vertices_needed * std::mem::size_of::<Vertex>()) as wgpu::BufferAddress;
 
@@ -108,15 +108,71 @@ impl Interface {
             let (panel_x_min_co, panel_y_min_co, panel_x_max_co, panel_y_max_co) =
                 panel.calculate_absolute_coordinates(screen_size);
 
+            let mut panel_tex_coords: [Vec2; 4] = [
+                Vec2::new(0.0, 0.0),
+                Vec2::new(0.0, 0.0),
+                Vec2::new(0.0, 0.0),
+                Vec2::new(0.0, 0.0),
+            ];
+
+            for entry in &self.atlas.entries {
+                if entry.name == panel.texture_name {
+                    panel_tex_coords = [
+                        Vec2::new(entry.start_coord.unwrap().0, entry.start_coord.unwrap().1),
+                        Vec2::new(entry.end_coord.unwrap().0, entry.start_coord.unwrap().1),
+                        Vec2::new(entry.end_coord.unwrap().0, entry.end_coord.unwrap().1),
+                        Vec2::new(entry.start_coord.unwrap().0, entry.end_coord.unwrap().1)
+                    ];
+                }
+            }
+
+            if panel.renderable == true {
+                let panel_vertices = [
+                    Vertex {
+                        position: Vec2::new(0.0, 0.0),
+                        color: Vec3 { x: 0.0, y: 1.0, z: 0.0 },
+                        tex_coords: panel_tex_coords[0]
+                    }, // Top-Left
+                    Vertex {
+                        position: Vec2::new(0.2, 0.0),
+                        color: Vec3 { x: 0.0, y: 1.0, z: 0.0 },
+                        tex_coords: panel_tex_coords[1]
+                    }, // Top-Right
+                    Vertex {
+                        position: Vec2::new(0.0, 0.2),
+                        color: Vec3 { x: 0.0, y: 1.0, z: 0.0 },
+                        tex_coords: panel_tex_coords[3]
+                    }, // Bottom-Left
+                    Vertex {
+                        position: Vec2::new(0.2, 0.2),
+                        color: Vec3 { x: 0.0, y: 1.0, z: 0.0 },
+                        tex_coords: panel_tex_coords[2]
+                    }, // Bottom-Right
+                ];
+
+                let vertex_data_slice = bytemuck::cast_slice(&panel_vertices);
+                let vertex_data_size = vertex_data_slice.len() as wgpu::BufferAddress;
+
+                queue.write_buffer(
+                    self.vertex_buffer.as_ref().unwrap(),
+                    vertex_offset,
+                    vertex_data_slice,
+                );
+
+                vertex_offset += vertex_data_size;
+            }
+
             let mut tex_coords: [Vec2; 4] = [
                         Vec2::new(0.0, 0.0),
                         Vec2::new(0.0, 0.0),
                         Vec2::new(0.0, 0.0),
                         Vec2::new(0.0, 0.0),
                     ];
+
+            
             for element in &mut panel.elements {
                 for entry in &self.atlas.entries {
-                    if &entry.name == element.texture_name.as_ref().unwrap() {
+                    if entry.name == element.texture_name {
                         tex_coords = [
                          Vec2::new(entry.start_coord.unwrap().0, entry.start_coord.unwrap().1),
                          Vec2::new(entry.end_coord.unwrap().0, entry.start_coord.unwrap().1),
@@ -125,25 +181,6 @@ impl Interface {
                         ];
                     }
                 }
-
-                println!("{:?} {:?}", element.texture_name, tex_coords);
-                /*
-                let tex_coords = if element.is_textured {
-                    [
-                        Vec2::new(0.0, 0.0),
-                        Vec2::new(1.0, 0.0),
-                        Vec2::new(1.0, 0.5),
-                        Vec2::new(0.0, 0.5),
-                    ]
-                } else {
-                    [
-                        Vec2::new(0.0, 0.0),
-                        Vec2::new(0.0, 0.0),
-                        Vec2::new(0.0, 0.0),
-                        Vec2::new(0.0, 0.0),
-                    ]
-                };
-                */
 
                 let new_vertices = element.calculate_vertices_relative_to_panel(
                     panel_x_min_co,
@@ -328,12 +365,57 @@ impl Interface {
         }
         self.brush.as_ref().unwrap().draw(renderpass);
     }
+
+    /*
+    pub(crate) fn render<'a>(&'a self, renderpass: &mut wgpu::RenderPass<'a>) {
+    let vertex_buffer = match &self.vertex_buffer {
+        Some(buffer) => buffer,
+        None => {
+            eprintln!("Warning: GUI vertex buffer not initialized. Skipping Render...");
+            return;
+        }
+    };
+    renderpass.set_index_buffer(
+        self.index_buffer.as_ref().unwrap().slice(..),
+        wgpu::IndexFormat::Uint16,
+    );
+
+    let mut total_draw_calls = 0;
+    for panel in &self.panels {
+        // Add 1 draw call for the panel if it's renderable
+        if panel.renderable {
+            total_draw_calls += 1;
+        }
+        // Add a draw call for each of the panel's elements
+        total_draw_calls += panel.elements.len();
+    }
+    
+    let mut vertex_offset_in_buffer = 0;
+    let vertex_size_bytes = std::mem::size_of::<Vertex>() as wgpu::BufferAddress;
+    let quad_vertices_count = 4;
+
+    for _ in 0..total_draw_calls {
+        renderpass.set_vertex_buffer(
+            0,
+            vertex_buffer.slice(
+                vertex_offset_in_buffer..(vertex_offset_in_buffer + quad_vertices_count * vertex_size_bytes),
+            ),
+        );
+        renderpass.draw_indexed(0..6, 0, 0..1);
+        vertex_offset_in_buffer += quad_vertices_count * vertex_size_bytes;
+    }
+    
+    self.brush.as_ref().unwrap().draw(renderpass);
+}
+     */
 }
 
 pub struct Panel {
     pub(crate) elements: Vec<Element>,
     start_coordinate: Coordinate,
     end_coordinate: Coordinate,
+    renderable: bool,
+    texture_name: String
 }
 
 impl Panel {
@@ -342,11 +424,18 @@ impl Panel {
             elements: Vec::new(),
             start_coordinate,
             end_coordinate,
+            renderable: false,
+            texture_name: "solid".to_string()
         }
     }
 
     pub fn add_element(&mut self, element: Element) {
         self.elements.push(element);
+    }
+
+    pub fn with_color(mut self) -> Self {
+        self.renderable = true;
+        self
     }
 
     fn calculate_absolute_coordinates(
@@ -381,21 +470,19 @@ pub struct Element {
     text: Option<String>,
     text_alignment: Option<Alignment>,
     on_click: Option<Box<dyn Fn() -> Option<GuiEvent> + 'static>>,
-    pub(crate) is_textured: bool,
-    texture_name: Option<String>
+    texture_name: String
 }
 
 impl Element {
-    pub fn new(start_coordinate: Coordinate, end_coordinate: Coordinate, color: Color) -> Self {
+    pub fn new(start_coordinate: Coordinate, end_coordinate: Coordinate, texture_name: &str) -> Self {
         Self {
             start_coordinate,
             end_coordinate,
-            color,
+            color: Color::from_hex("#ffffffff"),
             text: None,
             text_alignment: None,
             on_click: None,
-            is_textured: false,
-            texture_name: None
+            texture_name: texture_name.to_string(),
         }
     }
 
@@ -404,15 +491,15 @@ impl Element {
         self
     }
 
+    pub fn with_color(mut self, color: &str) -> Self {
+        let new_color = Color::from_hex(color);
+        self.color = new_color;
+        self
+    }
+
     pub fn with_text(mut self, alignment: Alignment, text: &str) -> Self {
         self.text = Some(text.to_string());
         self.text_alignment = Some(alignment);
-        self
-    }
-    
-    pub fn with_texture(mut self, texture_name: &str) -> Self {
-        self.is_textured = true;
-        self.texture_name = Some(texture_name.to_string());
         self
     }
 

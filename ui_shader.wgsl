@@ -10,12 +10,9 @@ struct GuiUniform {
 };
 
 @group(1) @binding(0)
-var<uniform> uniforms: GuiUniform;
-
-@group(1) @binding(1)
 var my_texture: texture_2d<f32>;
 
-@group(1) @binding(2)
+@group(1) @binding(1)
 var my_sampler: sampler;
 
 struct VertexInput {
@@ -45,11 +42,8 @@ fn vs_main(
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var final_color: vec4<f32>;
 
-    if (uniforms.use_texture == 1u) {
-        final_color = textureSample(my_texture, my_sampler, in.tex_coords);
-        final_color = final_color * vec4<f32>(in.color, 1.0);
-    } else {
-        final_color = vec4<f32>(in.color, 1.0);
-    }
+    final_color = textureSample(my_texture, my_sampler, in.tex_coords);
+    final_color = final_color * vec4<f32>(in.color, 1.0);
+
     return final_color;
 }
