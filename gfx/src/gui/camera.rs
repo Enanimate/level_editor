@@ -4,8 +4,6 @@ use winit::dpi::PhysicalSize;
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct Camera2DUniform {
-    // We use a 4x4 matrix for projection, even in 2D
-    // wgsl will read this as mat4x4f
     pub(crate) view_proj: [[f32; 4]; 4],
 }
 

@@ -129,23 +129,23 @@ impl Interface {
             if panel.renderable == true {
                 let panel_vertices = [
                     Vertex {
-                        position: Vec2::new(0.0, 0.0),
-                        color: Vec3 { x: 0.0, y: 1.0, z: 0.0 },
+                        position: Vec2::new(panel_x_min_co, panel_y_max_co),
+                        color: panel.color.into_vec3(),
                         tex_coords: panel_tex_coords[0]
                     }, // Top-Left
                     Vertex {
-                        position: Vec2::new(0.2, 0.0),
-                        color: Vec3 { x: 0.0, y: 1.0, z: 0.0 },
+                        position: Vec2::new(panel_x_max_co, panel_y_max_co),
+                        color: panel.color.into_vec3(),
                         tex_coords: panel_tex_coords[1]
                     }, // Top-Right
                     Vertex {
-                        position: Vec2::new(0.0, 0.2),
-                        color: Vec3 { x: 0.0, y: 1.0, z: 0.0 },
+                        position: Vec2::new(panel_x_min_co, panel_y_min_co),
+                        color: panel.color.into_vec3(),
                         tex_coords: panel_tex_coords[3]
                     }, // Bottom-Left
                     Vertex {
-                        position: Vec2::new(0.2, 0.2),
-                        color: Vec3 { x: 0.0, y: 1.0, z: 0.0 },
+                        position: Vec2::new(panel_x_max_co, panel_y_min_co),
+                        color: panel.color.into_vec3(),
                         tex_coords: panel_tex_coords[2]
                     }, // Bottom-Right
                 ];
@@ -249,7 +249,6 @@ impl Interface {
                 return ((x, y), scale);
             }
             (HorizontalAlignment::Left, VerticalAlignment::Center) => {
-                // Not quite there, look later
                 let half_y_length = ((py_1 - ey_0 * (py_1 - py_0)) - (py_1 - ey_1 * (py_1 - py_0))) / 2.0;
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
@@ -334,7 +333,6 @@ impl Interface {
     }
 
     pub(crate) fn render<'a>(&'a self, renderpass: &mut wgpu::RenderPass<'a>) {
-        //let mut intfc = self.interface.lock().unwrap();
         let vertex_buffer = match &self.vertex_buffer {
             Some(buffer) => buffer,
             None => {
@@ -342,72 +340,41 @@ impl Interface {
                 return;
             }
         };
-        renderpass.set_index_buffer(
-            self.index_buffer.as_ref().unwrap().slice(..),
-            wgpu::IndexFormat::Uint16,
-        );
-
+        let index_buffer = match &self.index_buffer {
+            Some(buffer) => buffer,
+            None => {
+                eprintln!("Warning: GUI index buffer not initialized. Skipping Render...");
+                return;
+            }
+        };
+        renderpass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+    
         let mut vertex_offset_in_buffer = 0;
         let vertex_size_bytes = std::mem::size_of::<Vertex>() as wgpu::BufferAddress;
         let quad_vertices_count = 4;
-        for _panel in 0..self.panels.len() {
-            for _element in 0..self.panels[_panel].elements.len() {
+        let quad_indices_count = 6;
+        let quad_buffer_size = quad_vertices_count * vertex_size_bytes;
+    
+        for panel in &self.panels {
+            if panel.renderable {
                 renderpass.set_vertex_buffer(
                     0,
-                    vertex_buffer.slice(
-                        vertex_offset_in_buffer
-                            ..(vertex_offset_in_buffer + quad_vertices_count * vertex_size_bytes),
-                    ),
+                    vertex_buffer.slice(vertex_offset_in_buffer..(vertex_offset_in_buffer + quad_buffer_size)),
                 );
-                renderpass.draw_indexed(0..6, 0, 0..1);
-                vertex_offset_in_buffer += quad_vertices_count * vertex_size_bytes;
+                renderpass.draw_indexed(0..quad_indices_count, 0, 0..1);
+                vertex_offset_in_buffer += quad_buffer_size;
+            }
+    
+            for _element in &panel.elements {
+                renderpass.set_vertex_buffer(
+                    0,
+                    vertex_buffer.slice(vertex_offset_in_buffer..(vertex_offset_in_buffer + quad_buffer_size)),
+                );
+                renderpass.draw_indexed(0..quad_indices_count, 0, 0..1);
+                vertex_offset_in_buffer += quad_buffer_size;
             }
         }
-        self.brush.as_ref().unwrap().draw(renderpass);
     }
-
-    /*
-    pub(crate) fn render<'a>(&'a self, renderpass: &mut wgpu::RenderPass<'a>) {
-    let vertex_buffer = match &self.vertex_buffer {
-        Some(buffer) => buffer,
-        None => {
-            eprintln!("Warning: GUI vertex buffer not initialized. Skipping Render...");
-            return;
-        }
-    };
-    renderpass.set_index_buffer(
-        self.index_buffer.as_ref().unwrap().slice(..),
-        wgpu::IndexFormat::Uint16,
-    );
-
-    let mut total_draw_calls = 0;
-    for panel in &self.panels {
-        // Add 1 draw call for the panel if it's renderable
-        if panel.renderable {
-            total_draw_calls += 1;
-        }
-        // Add a draw call for each of the panel's elements
-        total_draw_calls += panel.elements.len();
-    }
-    
-    let mut vertex_offset_in_buffer = 0;
-    let vertex_size_bytes = std::mem::size_of::<Vertex>() as wgpu::BufferAddress;
-    let quad_vertices_count = 4;
-
-    for _ in 0..total_draw_calls {
-        renderpass.set_vertex_buffer(
-            0,
-            vertex_buffer.slice(
-                vertex_offset_in_buffer..(vertex_offset_in_buffer + quad_vertices_count * vertex_size_bytes),
-            ),
-        );
-        renderpass.draw_indexed(0..6, 0, 0..1);
-        vertex_offset_in_buffer += quad_vertices_count * vertex_size_bytes;
-    }
-    
-    self.brush.as_ref().unwrap().draw(renderpass);
-}
-     */
 }
 
 pub struct Panel {
@@ -415,7 +382,8 @@ pub struct Panel {
     start_coordinate: Coordinate,
     end_coordinate: Coordinate,
     renderable: bool,
-    texture_name: String
+    texture_name: String,
+    color: Color
 }
 
 impl Panel {
@@ -425,7 +393,8 @@ impl Panel {
             start_coordinate,
             end_coordinate,
             renderable: false,
-            texture_name: "solid".to_string()
+            texture_name: "solid".to_string(),
+            color: Color::from_hex("#ffffffff")
         }
     }
 
@@ -433,8 +402,9 @@ impl Panel {
         self.elements.push(element);
     }
 
-    pub fn with_color(mut self) -> Self {
+    pub fn with_color(mut self, color: &str) -> Self {
         self.renderable = true;
+        self.color = Color::from_hex(color);
         self
     }
 
@@ -526,7 +496,7 @@ impl Element {
         let element_abs_x_max_center_origin = panel_x_min_center_origin
             + self.end_coordinate.x * (panel_x_max_center_origin - panel_x_min_center_origin);
 
-        // Your Y-axis is inverted here: y_max_center_origin is top, y_min_center_origin is bottom
+        // Y-axis is inverted here: y_max_center_origin is top, y_min_center_origin is bottom
         // elem_local_y_min_rel corresponds to the top of the element relative to panel's top (0.0 to 1.0)
         // elem_local_y_max_rel corresponds to the bottom of the element relative to panel's top (0.0 to 1.0)
         let element_abs_y_top_center_origin = panel_y_max_center_origin
@@ -534,8 +504,6 @@ impl Element {
         let element_abs_y_bottom_center_origin = panel_y_max_center_origin
             - self.end_coordinate.y * (panel_y_max_center_origin - panel_y_min_center_origin);
 
-        // Calculate the vertices for the mesh (these should match your rendering pipeline)
-        // These are typically NDC, so leave them as is if your Vertex shader handles center-origin NDC.
         let vtx_x_min = element_abs_x_min_center_origin;
         let vtx_x_max = element_abs_x_max_center_origin;
         let vtx_y_top = element_abs_y_top_center_origin; // The Y coordinate for the top edge of the element
@@ -602,16 +570,42 @@ impl Color {
             let red_value = u32::from_str_radix(&red, 16).unwrap() as f32 / 255.0;
             let green_value = u32::from_str_radix(&green, 16).unwrap() as f32 / 255.0;
             let blue_value = u32::from_str_radix(&blue, 16).unwrap() as f32 / 255.0;
+
+            let (corrected_r, corrected_g, corrected_b) = Self::srgb_correction(red_value, green_value, blue_value);
             
             Self {
-                r: red_value,
-                g: green_value,
-                b: blue_value
+                r: corrected_r,
+                g: corrected_g,
+                b: corrected_b
             }
         } else {
             log::error!("Provided parameter was not hex!");
             panic!()
         }
+    }
+
+    fn srgb_correction(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
+        let mut linear_color = (0.0, 0.0, 0.0);
+
+        if x <= 0.04045 {
+            linear_color.0 = x / 12.92;
+        } else {
+            linear_color.0 = ((x + 0.055) / 1.055).powf(2.4);
+        }
+
+        if y <= 0.04045 {
+            linear_color.1 = y / 12.92;
+        } else {
+            linear_color.1 = ((y + 0.055) / 1.055).powf(2.4);
+        }
+
+        if z <= 0.04045 {
+            linear_color.2 = z / 12.92;
+        } else {
+            linear_color.2 = ((z + 0.055) / 1.055).powf(2.4);
+        }
+
+        linear_color
     }
 }
 

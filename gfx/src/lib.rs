@@ -56,8 +56,6 @@ impl RenderState {
             .request_device(&wgpu::DeviceDescriptor {
                 label: None,
                 required_features: wgpu::Features::empty(),
-                // WebGL doesn't support all of wgpu's features, so if
-                // we're building for the web we'll have to disable some.
                 required_limits: if cfg!(target_arch = "wasm32") {
                     wgpu::Limits::downlevel_webgl2_defaults()
                 } else {
@@ -110,9 +108,6 @@ impl RenderState {
 
         let surface_caps = surface.get_capabilities(&adapter);
 
-        // Shader code in this tutorial assumes an Srgb surface texture. Using a different
-        // one will result all the colors comming out darker. If you want to support non
-        // Srgb surfaces, you'll need to account for that when drawing to the frame.
         let surface_format = surface_caps
             .formats
             .iter()
@@ -140,44 +135,29 @@ impl RenderState {
         let texture_size = wgpu::Extent3d {
             width: dimensions.0,
             height: dimensions.1,
-            // All textures are stored as 3D, we represent our 2D texture
-            // by setting depth to 1.
             depth_or_array_layers: 1,
         };
         let diffuse_texture = device.create_texture(
             &wgpu::TextureDescriptor {
                 size: texture_size,
-                mip_level_count: 1, // We'll talk about this a little later
+                mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                // Most images are stored using sRGB, so we need to reflect that here.
                 format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                // TEXTURE_BINDING tells wgpu that we want to use this texture in shaders
-                // COPY_DST means that we want to copy data to this texture
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 label: Some("diffuse_texture"),
-                // This is the same as with the SurfaceConfig. It
-                // specifies what texture formats can be used to
-                // create TextureViews for this texture. The base
-                // texture format (Rgba8UnormSrgb in this case) is
-                // always supported. Note that using a different
-                // texture format is not supported on the WebGL2
-                // backend.
                 view_formats: &[],
             }
         );
 
         queue.write_texture(
-            // Tells wgpu where to copy the pixel data
             wgpu::TexelCopyTextureInfo {
                 texture: &diffuse_texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            // The actual pixel data
             &diffuse_rgba,
-            // The layout of the texture
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * dimensions.0),
@@ -201,10 +181,8 @@ impl RenderState {
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
                     wgpu::BindGroupLayoutEntry {
-                        binding: 0, //@binding(1) for our texture
+                        binding: 0,
                         visibility: wgpu::ShaderStages::FRAGMENT,
-                        // This should match the filterable field of the
-                        // corresponding Texture entry above.
                         ty: wgpu::BindingType::Texture {
                             multisampled: false,
                             view_dimension: wgpu::TextureViewDimension::D2,
@@ -325,10 +303,10 @@ impl RenderState {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.012,
-                        g: 0.012,
-                        b: 0.018,
-                        a: 1.00,
+                            r: 0.0075,
+                            g: 0.0619,
+                            b: 0.1706,
+                            a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -343,34 +321,7 @@ impl RenderState {
             render_pass.set_bind_group(0, &self.camera_bind_group_2d, &[]);
             render_pass.set_bind_group(1, &self.gui_material_bind_group, &[]);
 
-            let (vertex_buffer, index_buffer) = match (interface_guard.vertex_buffer.as_ref(), interface_guard.index_buffer.as_ref()) {
-                (Some(vb), Some(ib)) =>(vb, ib),
-                _ => {
-                    eprintln!("Warning: GUI vertex/index buffers are not initialized.");
-                    return Ok(());
-                }
-            };
-
-            render_pass.set_index_buffer(index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            let mut vertex_offset_in_buffer = 0;
-            let vertex_size_bytes = std::mem::size_of::<Vertex>() as wgpu::BufferAddress;
-            let quad_vertices_count = 4;
-            let quad_indices_count = 6;
-
-            for panel in interface_guard.panels.iter() {
-                for _element in panel.elements.iter() {
-
-
-                    render_pass.set_vertex_buffer(
-                        0, 
-                        vertex_buffer.slice(vertex_offset_in_buffer..(vertex_offset_in_buffer + quad_vertices_count * vertex_size_bytes),
-                    ));
-
-                    render_pass.draw_indexed(0..quad_indices_count, 0, 0..1);
-
-                    vertex_offset_in_buffer += quad_vertices_count * vertex_size_bytes;
-                }
-            }
+            interface_guard.render(&mut render_pass);
 
             interface_guard.draw_text_brush(&mut render_pass);
         }
