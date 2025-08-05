@@ -1,6 +1,3 @@
-
-
-use glam::{Vec2, Vec3};
 use wgpu::{Device, Queue, util::DeviceExt};
 
 use wgpu_text::{glyph_brush::{ab_glyph::{FontRef, PxScale}, Section, Text}, BrushBuilder, TextBrush};
@@ -132,20 +129,20 @@ impl Interface {
             let (panel_x_min_co, panel_y_min_co, panel_x_max_co, panel_y_max_co) =
                 panel.calculate_absolute_coordinates(screen_size);
 
-            let mut panel_tex_coords: [Vec2; 4] = [
-                Vec2::new(0.0, 0.0),
-                Vec2::new(0.0, 0.0),
-                Vec2::new(0.0, 0.0),
-                Vec2::new(0.0, 0.0),
+            let mut panel_tex_coords: [[f32; 2]; 4] = [
+                [0.0, 0.0],
+                [0.0, 0.0],
+                [0.0, 0.0],
+                [0.0, 0.0],
             ];
 
             for entry in &self.atlas.entries {
                 if entry.name == panel.texture_name {
                     panel_tex_coords = [
-                        Vec2::new(entry.start_coord.unwrap().0, entry.start_coord.unwrap().1),
-                        Vec2::new(entry.end_coord.unwrap().0, entry.start_coord.unwrap().1),
-                        Vec2::new(entry.end_coord.unwrap().0, entry.end_coord.unwrap().1),
-                        Vec2::new(entry.start_coord.unwrap().0, entry.end_coord.unwrap().1)
+                        [entry.start_coord.unwrap().0, entry.start_coord.unwrap().1],
+                        [entry.end_coord.unwrap().0, entry.start_coord.unwrap().1],
+                        [entry.end_coord.unwrap().0, entry.end_coord.unwrap().1],
+                        [entry.start_coord.unwrap().0, entry.end_coord.unwrap().1]
                     ];
                 }
             }
@@ -153,23 +150,23 @@ impl Interface {
             if panel.renderable == true {
                 let panel_vertices = [
                     Vertex {
-                        position: Vec2::new(panel_x_min_co, panel_y_max_co),
-                        color: panel.color.into_vec3(),
+                        position: [panel_x_min_co, panel_y_max_co],
+                        color: panel.color.into_vec4(),
                         tex_coords: panel_tex_coords[0]
                     }, // Top-Left
                     Vertex {
-                        position: Vec2::new(panel_x_max_co, panel_y_max_co),
-                        color: panel.color.into_vec3(),
+                        position: [panel_x_max_co, panel_y_max_co],
+                        color: panel.color.into_vec4(),
                         tex_coords: panel_tex_coords[1]
                     }, // Top-Right
                     Vertex {
-                        position: Vec2::new(panel_x_min_co, panel_y_min_co),
-                        color: panel.color.into_vec3(),
+                        position: [panel_x_min_co, panel_y_min_co],
+                        color: panel.color.into_vec4(),
                         tex_coords: panel_tex_coords[3]
                     }, // Bottom-Left
                     Vertex {
-                        position: Vec2::new(panel_x_max_co, panel_y_min_co),
-                        color: panel.color.into_vec3(),
+                        position: [panel_x_max_co, panel_y_min_co],
+                        color: panel.color.into_vec4(),
                         tex_coords: panel_tex_coords[2]
                     }, // Bottom-Right
                 ];
@@ -186,11 +183,11 @@ impl Interface {
                 vertex_offset += vertex_data_size;
             }
 
-            let mut tex_coords: [Vec2; 4] = [
-                        Vec2::new(0.0, 0.0),
-                        Vec2::new(0.0, 0.0),
-                        Vec2::new(0.0, 0.0),
-                        Vec2::new(0.0, 0.0),
+            let mut tex_coords: [[f32; 2]; 4] = [
+                        [0.0, 0.0],
+                        [0.0, 0.0],
+                        [0.0, 0.0],
+                        [0.0, 0.0],
                     ];
 
             
@@ -198,10 +195,10 @@ impl Interface {
                 for entry in &self.atlas.entries {
                     if entry.name == element.texture_name {
                         tex_coords = [
-                         Vec2::new(entry.start_coord.unwrap().0, entry.start_coord.unwrap().1),
-                         Vec2::new(entry.end_coord.unwrap().0, entry.start_coord.unwrap().1),
-                         Vec2::new(entry.end_coord.unwrap().0, entry.end_coord.unwrap().1),
-                         Vec2::new(entry.start_coord.unwrap().0, entry.end_coord.unwrap().1)
+                         [entry.start_coord.unwrap().0, entry.start_coord.unwrap().1],
+                         [entry.end_coord.unwrap().0, entry.start_coord.unwrap().1],
+                         [entry.end_coord.unwrap().0, entry.end_coord.unwrap().1],
+                         [entry.start_coord.unwrap().0, entry.end_coord.unwrap().1]
                         ];
                     }
                 }
@@ -530,7 +527,7 @@ impl Element {
         panel_y_min_center_origin: f32,
         panel_x_max_center_origin: f32,
         panel_y_max_center_origin: f32,
-        tex_coords: [Vec2; 4]
+        tex_coords: [[f32; 2]; 4]
     ) -> [Vertex; 4] {
 
         // Convert element's local coordinates to panel's absolute coordinates (center-origin)
@@ -554,23 +551,23 @@ impl Element {
 
         [
             Vertex {
-                position: Vec2::new(vtx_x_min, vtx_y_top),
-                color: self.color.into_vec3(),
+                position: [vtx_x_min, vtx_y_top],
+                color: self.color.into_vec4(),
                 tex_coords: tex_coords[0]
             }, // Top-Left
             Vertex {
-                position: Vec2::new(vtx_x_max, vtx_y_top),
-                color: self.color.into_vec3(),
+                position: [vtx_x_max, vtx_y_top],
+                color: self.color.into_vec4(),
                 tex_coords: tex_coords[1]
             }, // Top-Right
             Vertex {
-                position: Vec2::new(vtx_x_min, vtx_y_bottom),
-                color: self.color.into_vec3(),
+                position: [vtx_x_min, vtx_y_bottom],
+                color: self.color.into_vec4(),
                 tex_coords: tex_coords[3]
             }, // Bottom-Left
             Vertex {
-                position: Vec2::new(vtx_x_max, vtx_y_bottom),
-                color: self.color.into_vec3(),
+                position: [vtx_x_max, vtx_y_bottom],
+                color: self.color.into_vec4(),
                 tex_coords: tex_coords[2]
             }, // Bottom-Right
         ]
@@ -593,34 +590,32 @@ pub struct Color {
     r: f32,
     g: f32,
     b: f32,
+    a: f32
 }
 
 impl Color {
-    pub fn new(r: f32, g: f32, b: f32) -> Self {
-        Self { r, g, b }
+    pub fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
+        Self { r, g, b, a }
     }
 
-    fn into_vec3(&self) -> Vec3 {
-        Vec3::new(self.r, self.g, self.b)
+    fn into_vec4(&self) -> [f32; 4] {
+        [self.r, self.g, self.b, self.a]
     }
 
     pub fn from_hex(hex_color: &str) -> Self {
         if let Some(hex) = hex_color.strip_prefix("#") {
-            let mut chars = hex.chars();
-            let red: String = [chars.next().unwrap(), chars.next().unwrap()].iter().collect() ;
-            let green: String = [chars.next().unwrap(), chars.next().unwrap()].iter().collect();
-            let blue: String = [chars.next().unwrap(), chars.next().unwrap()].iter().collect();
+            let red = u32::from_str_radix(&hex[0..2], 16).unwrap() as f32 / 255.0;
+            let green = u32::from_str_radix(&hex[2..4], 16).unwrap() as f32 / 255.0;
+            let blue = u32::from_str_radix(&hex[4..6], 16).unwrap() as f32 / 255.0;
+            let alpha = u32::from_str_radix(&hex[6..8], 16).unwrap() as f32 / 255.0;
 
-            let red_value = u32::from_str_radix(&red, 16).unwrap() as f32 / 255.0;
-            let green_value = u32::from_str_radix(&green, 16).unwrap() as f32 / 255.0;
-            let blue_value = u32::from_str_radix(&blue, 16).unwrap() as f32 / 255.0;
-
-            let (corrected_r, corrected_g, corrected_b) = Self::srgb_correction(red_value, green_value, blue_value);
+            let (corrected_r, corrected_g, corrected_b) = Self::srgb_correction(red, green, blue);
             
             Self {
                 r: corrected_r,
                 g: corrected_g,
-                b: corrected_b
+                b: corrected_b,
+                a: alpha
             }
         } else {
             log::error!("Provided parameter was not hex!");

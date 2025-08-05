@@ -69,10 +69,10 @@ impl EditorApp {
     fn build_project_view_interface(atlas: UiAtlas) -> Interface {
         let mut interface = Interface::new(atlas);
         let mut header = Panel::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 0.02))
-            .with_color("#0d1117");
+            .with_color("#0d1117ff");
         
         let element1 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(0.025, 1.0), "solid")
-            .with_color("#0d1117")
+            .with_color("#0d1117ff")
             .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Center }, "File", 0.7)
             .with_fn(|| Some(GuiEvent::Highlight), InteractionStyle::OnHover)
             .with_fn(|| Some(GuiEvent::DisplaySettingsMenu), InteractionStyle::OnClick);
@@ -89,16 +89,16 @@ impl EditorApp {
         .collect::<Result<Vec<_>, io::Error>>().unwrap();
 
         let mut panel = Panel::new(Coordinate::new(0.2, 0.1), Coordinate::new(0.8, 0.9))
-            .with_color("#161b22");
+            .with_color("#161b22ff");
         let mut last_coordinate = Coordinate::new(0.0, 0.0);
         for file in entries {
             println!("{} {}", last_coordinate.x, last_coordinate.y);
             let file_image = Element::new(Coordinate::new(0.01 + 0.005, last_coordinate.y + 0.005), Coordinate::new(0.04 - 0.005, last_coordinate.y + 0.03 - 0.005), "folder-1484");
             let buffer_space = Element::new(Coordinate::new(0.0, last_coordinate.y), Coordinate::new(0.04, last_coordinate.y + 0.03), "solid")
-                .with_color("#0d1117");
+                .with_color("#0d1117ff");
 
             let element = Element::new(Coordinate::new(0.04, last_coordinate.y), Coordinate::new(1.0, last_coordinate.y + 0.03), "solid")
-                .with_color("#0d1117")
+                .with_color("#0d1117ff")
                 .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Left}, file.file_name().unwrap().to_str().unwrap(), 0.8);
 
             panel.add_element(element);
@@ -110,10 +110,10 @@ impl EditorApp {
         let mut interface = Interface::new(atlas);
 
         let mut header = Panel::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 0.02))
-            .with_color("#0d1117");
+            .with_color("#0d1117ff");
         
         let element1 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(0.025, 1.0), "solid")
-            .with_color("#0d1117")
+            .with_color("#0d1117ff")
             .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Center }, "Test", 0.7)
             .with_fn(|| Some(GuiEvent::ChangeLayoutToProjectView), InteractionStyle::OnClick);
 
@@ -128,7 +128,7 @@ impl EditorApp {
 
     fn display_settings_menu(mut interface: Interface) -> Interface {
         let element = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 1.0), "solid")
-            .with_color("#0d1117")
+            .with_color("#0d1117ff")
             .with_fn(|| Some(GuiEvent::Highlight), InteractionStyle::OnHover)
             .with_fn(|| Some(GuiEvent::ChangeLayoutToFileExplorer), InteractionStyle::OnClick)
             .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Left }, "New", 0.7);

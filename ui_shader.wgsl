@@ -17,13 +17,13 @@ var my_sampler: sampler;
 
 struct VertexInput {
     @location(0) position: vec2<f32>,
-    @location(1) color: vec3<f32>,
+    @location(1) color: vec4<f32>,
     @location(2) tex_coords: vec2<f32>,
 };
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
-    @location(0) color: vec3<f32>,
+    @location(0) color: vec4<f32>,
     @location(1) tex_coords: vec2<f32>,
 };
 
@@ -43,7 +43,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var final_color: vec4<f32>;
 
     final_color = textureSample(my_texture, my_sampler, in.tex_coords);
-    final_color = final_color * vec4<f32>(in.color, 1.0);
+    final_color = final_color * vec4<f32>(in.color);
 
     return final_color;
 }

@@ -1,6 +1,5 @@
 use std::{iter, sync::{Arc, Mutex}};
 
-use glam::{Vec2, Vec3};
 use wgpu::util::DeviceExt;
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -232,9 +231,9 @@ impl RenderState {
             .build("Preview Pipeline");
 
         let triangle_vertices = [
-            Vertex { position: Vec2::new(0.0, 0.5), color: Vec3::new(0.0, 0.0, 1.0), tex_coords: Vec2::new(0.0, 0.0) },  // Top (green)
-            Vertex { position: Vec2::new(-0.5, -0.5), color: Vec3::new(0.0, 1.0, 0.0), tex_coords: Vec2::new(0.0, 0.0) }, // Bottom-left (blue)
-            Vertex { position: Vec2::new(0.5, -0.5), color: Vec3::new(1.0, 0.0, 0.0), tex_coords: Vec2::new(0.0, 0.0) }, // Bottom-right (yellow)
+            Vertex { position: [0.0, 0.5], color: [1.0, 0.0, 0.0, 1.0], tex_coords: [0.0, 0.0] },  // Top (green)
+            Vertex { position: [-0.5, -0.5], color: [0.0, 1.0, 0.0, 1.0], tex_coords: [0.0, 0.0] }, // Bottom-left (blue)
+            Vertex { position: [0.5, -0.5], color: [0.0, 0.0, 1.0, 1.0], tex_coords: [0.0, 0.0] }, // Bottom-right (yellow)
         ];
 
         let triangle_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
