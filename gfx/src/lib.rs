@@ -4,7 +4,7 @@ use glam::{Vec2, Vec3};
 use wgpu::util::DeviceExt;
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::{definitions::{GuiPageState, Vertex}, gui::{camera::{Camera2D, Camera2DUniform}, interface::Interface}};
+use crate::{definitions::{ColorExt, GuiPageState, Vertex}, gui::{camera::{Camera2D, Camera2DUniform}, interface::Interface}};
 
 mod builder;
 pub mod definitions;
@@ -302,12 +302,7 @@ impl RenderState {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.0075,
-                            g: 0.0619,
-                            b: 0.1706,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::from_hex("#21262d")),
                         store: wgpu::StoreOp::Store,
                     },
                     depth_slice: None,
@@ -324,7 +319,41 @@ impl RenderState {
             interface_guard.render(&mut render_pass);
 
             interface_guard.draw_text_brush(&mut render_pass);
+
+            /*if self.gui_state == GuiPageState::ProjectView {
+                render_pass.set_pipeline(&self.preview_pipeline);
+                render_pass.set_viewport(0.0, 0.0, self.size.width as f32 / 2.0, self.size.height as f32 / 2.0, 0.0, 1.0);
+                render_pass.set_vertex_buffer(0, self.triangle_vertex_buffer.slice(..));
+                render_pass.draw(0..3, 0..1);
+            }*/
         }
+
+        
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                    depth_slice: None,
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            if self.gui_state == GuiPageState::ProjectView {
+                render_pass.set_pipeline(&self.preview_pipeline);
+                render_pass.set_viewport(0.0, 0.0, self.size.width as f32 / 2.0, self.size.height as f32 / 2.0, 0.0, 1.0);
+                render_pass.set_vertex_buffer(0, self.triangle_vertex_buffer.slice(..));
+                render_pass.draw(0..3, 0..1);
+            }
+        }
+        
 
         self.queue.submit(std::iter::once(encoder.finish()));
         output.present();
@@ -360,12 +389,7 @@ impl RenderState {
                 view: &view,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.012,
-                        g: 0.012,
-                        b: 0.018,
-                        a: 1.00,
-                    }),
+                    load: wgpu::LoadOp::Clear(wgpu::Color::from_hex("#ffff")),
                     store: wgpu::StoreOp::Store,
                 },
                 depth_slice: None
@@ -380,12 +404,7 @@ impl RenderState {
         //render_pass.set_bind_group(1, &self.diffuse_bind_group, &[]);
         interface.render(&mut render_pass);
 
-        if self.gui_state == GuiPageState::ProjectView {
-            render_pass.set_pipeline(&self.preview_pipeline);
-            render_pass.set_viewport(self.size.width as f32 / 2.0, self.size.height as f32 / 2.0, self.size.width as f32 / 2.0, self.size.height as f32 / 2.0, 0.0, 1.0);
-            render_pass.set_vertex_buffer(0, self.triangle_vertex_buffer.slice(..));
-            render_pass.draw(0..3, 0..1);
-        }
+        
 
         drop(render_pass);
 

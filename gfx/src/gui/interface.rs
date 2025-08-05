@@ -6,10 +6,10 @@ use wgpu::{Device, Queue, util::DeviceExt};
 use wgpu_text::{glyph_brush::{ab_glyph::{FontRef, PxScale}, Section, Text}, BrushBuilder, TextBrush};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 
-use crate::definitions::{GuiEvent, UiAtlas, Vertex};
+use crate::definitions::{GuiEvent, InteractionStyle, UiAtlas, Vertex};
 
 pub struct Interface {
-    pub(crate) panels: Vec<Panel>,
+    pub panels: Vec<Panel>,
     pub(crate) vertex_buffer: Option<wgpu::Buffer>,
     pub(crate) index_buffer: Option<wgpu::Buffer>,
     brush: Option<TextBrush<FontRef<'static>>>,
@@ -31,30 +31,42 @@ impl Interface {
         self.panels.push(panel);
     }
 
-    pub fn handle_interaction(&mut self, position: PhysicalPosition<f64>, screen_size: PhysicalSize<u32>) -> Option<GuiEvent> {
-
+    pub fn handle_interaction(&mut self, position: PhysicalPosition<f64>, screen_size: PhysicalSize<u32>, interaction_type: InteractionStyle) -> Option<(GuiEvent, (usize, usize))> {
         let x_position = position.x as f32 / screen_size.width as f32;
         let y_position = position.y as f32 / screen_size.height as f32;
-        for panel in &self.panels {
-            match (x_position >= panel.start_coordinate.x && x_position <= panel.end_coordinate.x, y_position >= panel.start_coordinate.y && y_position <= panel.end_coordinate.y) {
-                (true, true) => {
-                    let rel_cursor_x = x_position - panel.start_coordinate.x;
-                    let rel_cursor_y = y_position - panel.start_coordinate.y;
-                    for element in &panel.elements {
-                        if element.on_click.is_some() {
-                            match (rel_cursor_x >= element.start_coordinate.x && rel_cursor_x <= element.end_coordinate.x, rel_cursor_y >= element.start_coordinate.y && rel_cursor_y <= element.end_coordinate.y) {
-                                (true, true) => {
-                                    return element.handle_click();
-                                },
-                                _ => ()
+
+        for (panel_idx, panel) in self.panels.iter().enumerate() {
+            if x_position >= panel.start_coordinate.x && x_position <= panel.end_coordinate.x &&
+            y_position >= panel.start_coordinate.y && y_position <= panel.end_coordinate.y {
+                let rel_cursor_x = x_position - panel.start_coordinate.x;
+                let rel_cursor_y = y_position - panel.start_coordinate.y;
+                
+                for (element_idx, element) in panel.elements.iter().enumerate() {
+                    if rel_cursor_x >= element.start_coordinate.x && rel_cursor_x <= element.end_coordinate.x &&
+                    rel_cursor_y >= element.start_coordinate.y && rel_cursor_y <= element.end_coordinate.y {
+                        
+                        if interaction_type == InteractionStyle::OnClick && element.on_click.is_some() {
+                            if let Some(event) = element.handle_click(interaction_type.clone()) {
+                                return Some((event, (panel_idx, element_idx)));
+                            }
+                        } else if interaction_type == InteractionStyle::OnHover && element.on_hover.is_some() {
+                            if let Some(event) = element.handle_click(interaction_type.clone()) {
+                                return Some((event, (panel_idx, element_idx)));
                             }
                         }
                     }
                 }
-                _ => ()
             }
         }
         None
+    }
+
+    pub fn reset_all_element_colors(&mut self) {
+        for panel in &mut self.panels {
+            for element in &mut panel.elements {
+                element.color = element.original_color.clone();
+            }
+        }
     }
 
     pub fn init_gpu_buffers(
@@ -219,13 +231,13 @@ impl Interface {
                         text_align,
                         text_content,
                     );
-                    let text_content_str = text_content.as_str();
+                    let text_content_str = text_content.0.as_str();
 
                     let section = Section::builder()
                         .with_screen_position([adjusted_x, adjusted_y])
                         .with_text(vec![
                             Text::new(text_content_str)
-                                .with_scale(PxScale {x: 30.0, y: 30.0})
+                                .with_scale(PxScale {x: 30.0 * text_content.1, y: 30.0 * text_content.1})
                                 .with_color([1.0, 1.0, 1.0, 1.0]),
                         ]);
                     sections_to_queue.push(section);
@@ -237,7 +249,7 @@ impl Interface {
         }
     }
 
-    fn text_alignment(ex_0: f32, ey_0: f32, ex_1: f32, ey_1: f32, px_0: f32, py_0: f32, px_1: f32, py_1: f32, screen_size: PhysicalSize<u32>, alignment: &Alignment, text: &str) -> ((f32, f32), f32){
+    fn text_alignment(ex_0: f32, ey_0: f32, ex_1: f32, ey_1: f32, px_0: f32, py_0: f32, px_1: f32, py_1: f32, screen_size: PhysicalSize<u32>, alignment: &Alignment, text: &(String, f32)) -> ((f32, f32), f32){
         let screen_x_center = screen_size.width as f32 / 2.0;
         let screen_y_center = screen_size.height as f32 / 2.0;
         let scale = 1.0;
@@ -257,13 +269,13 @@ impl Interface {
             (HorizontalAlignment::Left, VerticalAlignment::Bottom) => {
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_1 * (py_1 - py_0));
-                return ((x, y - 30.0), scale);
+                return ((x, y - (30.0 * text.1)), scale);
             }
 
 
 
             (HorizontalAlignment::Center, VerticalAlignment::Top) => {
-                let text_offset = (text.chars().count() as f32 * 15.0) / 2.0;
+                let text_offset = (text.0.chars().count() as f32 * (15.0 * text.1)) / 2.0;
 
                 let half_x_length = ((px_0 + ex_1 * (px_1 - px_0)) - (px_0 + ex_0 * (px_1 - px_0))) / 2.0;
 
@@ -272,17 +284,17 @@ impl Interface {
                 return ((x + half_x_length - text_offset, y), scale);
             }
             (HorizontalAlignment::Center, VerticalAlignment::Center) => {
-                let text_offset = (text.chars().count() as f32 * 15.0) / 2.0;
+                let text_offset = (text.0.chars().count() as f32 * (15.0 * text.1)) / 2.0;
 
                 let half_x_length = ((px_0 + ex_1 * (px_1 - px_0)) - (px_0 + ex_0 * (px_1 - px_0))) / 2.0;
                 let half_y_length = ((py_1 - ey_0 * (py_1 - py_0)) - (py_1 - ey_1 * (py_1 - py_0))) / 2.0;
 
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
-                return ((x + half_x_length - text_offset, y + half_y_length - 15.0), scale);
+                return ((x + half_x_length - text_offset, y + half_y_length - (15.0 * text.1)), scale);
             }
             (HorizontalAlignment::Center, VerticalAlignment::Bottom) => {
-                let text_offset = (text.chars().count() as f32 * 15.0) / 2.0;
+                let text_offset = (text.0.chars().count() as f32 * (15.0 * text.1)) / 2.0;
                 
                 let half_x_length = ((px_0 + ex_1 * (px_1 - px_0)) - (px_0 + ex_0 * (px_1 - px_0))) / 2.0;
 
@@ -294,7 +306,7 @@ impl Interface {
 
             
             (HorizontalAlignment::Right, VerticalAlignment::Top) => {
-                let text_offset = text.chars().count() as f32 * 15.0;
+                let text_offset = text.0.chars().count() as f32 * (15.0 * text.1);
 
                 let half_x_length = (px_0 + ex_1 * (px_1 - px_0)) - (px_0 + ex_0 * (px_1 - px_0));
 
@@ -303,7 +315,7 @@ impl Interface {
                 return ((x + half_x_length - text_offset, y), scale);
             }
             (HorizontalAlignment::Right, VerticalAlignment::Center) => {
-                let text_offset = text.chars().count() as f32 * 15.0;
+                let text_offset = text.0.chars().count() as f32 * (15.0 * text.1);
 
                 let half_x_length = (px_0 + ex_1 * (px_1 - px_0)) - (px_0 + ex_0 * (px_1 - px_0));
                 let half_y_length = ((py_1 - ey_0 * (py_1 - py_0)) - (py_1 - ey_1 * (py_1 - py_0))) / 2.0;
@@ -313,7 +325,7 @@ impl Interface {
                 return ((x + half_x_length - text_offset, y + half_y_length - 15.0), scale);
             }
             (HorizontalAlignment::Right, VerticalAlignment::Bottom) => {
-                let text_offset = text.chars().count() as f32 * 15.0;
+                let text_offset = text.0.chars().count() as f32 * (15.0 * text.1);
 
                 let half_x_length = (px_0 + ex_1 * (px_1 - px_0)) - (px_0 + ex_0 * (px_1 - px_0));
 
@@ -378,7 +390,7 @@ impl Interface {
 }
 
 pub struct Panel {
-    pub(crate) elements: Vec<Element>,
+    pub elements: Vec<Element>,
     start_coordinate: Coordinate,
     end_coordinate: Coordinate,
     renderable: bool,
@@ -436,10 +448,12 @@ impl Panel {
 pub struct Element {
     start_coordinate: Coordinate,
     end_coordinate: Coordinate,
-    color: Color,
-    text: Option<String>,
+    pub color: Color,
+    pub original_color: Color,
+    text: Option<(String, f32)>,
     text_alignment: Option<Alignment>,
     on_click: Option<Box<dyn Fn() -> Option<GuiEvent> + 'static>>,
+    on_hover: Option<Box<dyn Fn() -> Option<GuiEvent> + 'static>>,
     texture_name: String
 }
 
@@ -449,36 +463,53 @@ impl Element {
             start_coordinate,
             end_coordinate,
             color: Color::from_hex("#ffffffff"),
+            original_color: Color::from_hex("#ffffffff"),
             text: None,
             text_alignment: None,
             on_click: None,
+            on_hover: None,
             texture_name: texture_name.to_string(),
         }
     }
 
-    pub fn with_fn(mut self, func: impl Fn() -> Option<GuiEvent> + 'static) -> Self {
-        self.on_click = Some(Box::new(func));
+    pub fn with_fn(mut self, func: impl Fn() -> Option<GuiEvent> + 'static, style: InteractionStyle) -> Self {
+        if style == InteractionStyle::OnClick {
+            self.on_click = Some(Box::new(func));
+        } else if style == InteractionStyle::OnHover {
+            self.on_hover = Some(Box::new(func));
+        }
         self
     }
 
     pub fn with_color(mut self, color: &str) -> Self {
         let new_color = Color::from_hex(color);
-        self.color = new_color;
+        self.color = new_color.clone();
+        self.original_color = new_color;
         self
     }
 
-    pub fn with_text(mut self, alignment: Alignment, text: &str) -> Self {
-        self.text = Some(text.to_string());
+    pub fn with_text(mut self, alignment: Alignment, text: &str, scale: f32) -> Self {
+        self.text = Some((text.to_string(), scale));
         self.text_alignment = Some(alignment);
         self
     }
 
-    pub fn handle_click(&self) -> Option<GuiEvent> {
-        if let Some(func) = &self.on_click {
+    pub fn handle_click(&self, interaction_type: InteractionStyle) -> Option<GuiEvent> {
+        let function_src = if interaction_type == InteractionStyle::OnClick {
+            &self.on_click
+        } else {
+            &self.on_hover
+        };
+        if let Some(func) = function_src {
             func()
         } else {
             None
         }
+    }
+
+    pub fn with_temp_color(&mut self, color: &str) {
+        let new_color = Color::from_hex(color);
+        self.color = new_color;
     }
 
     fn calculate_vertices_relative_to_panel(
@@ -545,6 +576,7 @@ impl Coordinate {
     }
 }
 
+#[derive(Clone)]
 pub struct Color {
     r: f32,
     g: f32,

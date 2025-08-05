@@ -1,6 +1,6 @@
 use std::{fs, io, sync::{Arc, Mutex}};
 
-use gfx::{definitions::{GuiEvent, GuiMenuState, GuiPageState}, gui::interface::{Alignment, Coordinate, Element, HorizontalAlignment, Interface, Panel, VerticalAlignment}, RenderState};
+use gfx::{definitions::{GuiEvent, GuiMenuState, GuiPageState, InteractionStyle}, gui::interface::{Alignment, Coordinate, Element, HorizontalAlignment, Interface, Panel, VerticalAlignment}, RenderState};
 use winit::{application::ApplicationHandler, dpi::PhysicalPosition, event::{MouseButton, WindowEvent}, event_loop::{ActiveEventLoop, EventLoop}, window::Window};
 
 use crate::UiAtlas;
@@ -12,7 +12,8 @@ pub struct EditorApp {
     render_state: Option<gfx::RenderState>,
     cursor_position: Option<PhysicalPosition<f64>>,
     window_ref: Option<Arc<Window>>,
-    menu_open: (bool, Option<GuiMenuState>)
+    menu_open: (bool, Option<GuiMenuState>),
+    last_hovered_element_index: Option<(usize, usize)>,
 }
 
 impl EditorApp {
@@ -24,7 +25,8 @@ impl EditorApp {
             render_state: None,
             cursor_position: None,
             window_ref: None,
-            menu_open: (false, None)
+            menu_open: (false, None),
+            last_hovered_element_index: None,
         };
 
         env_logger::init();
@@ -66,15 +68,17 @@ impl EditorApp {
 
     fn build_project_view_interface(atlas: UiAtlas) -> Interface {
         let mut interface = Interface::new(atlas);
-        let mut panel = Panel::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 0.03))
-            .with_color("#0A2647ff");
+        let mut header = Panel::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 0.02))
+            .with_color("#0d1117");
         
-        let element1 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(0.05, 1.0), "button")
-            .with_fn(|| Some(GuiEvent::ChangeLayoutToFileExplorer));
+        let element1 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(0.025, 1.0), "solid")
+            .with_color("#0d1117")
+            .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Center }, "File", 0.7)
+            .with_fn(|| Some(GuiEvent::Highlight), InteractionStyle::OnHover);
 
-        panel.add_element(element1);
+        header.add_element(element1);
 
-        interface.add_panel(panel);
+        interface.add_panel(header);
         interface
     }
 
@@ -88,12 +92,24 @@ impl EditorApp {
         for file in entries {
             println!("{} {}", last_coordinate.x, last_coordinate.y);
             let element = Element::new(Coordinate::new(0.0, last_coordinate.y), Coordinate::new(1.0, last_coordinate.y + 0.2), "")
-                .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Center}, file.file_name().unwrap().to_str().unwrap());
+                .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Center}, file.file_name().unwrap().to_str().unwrap(), 0.5);
             panel.add_element(element);
             last_coordinate.y = last_coordinate.y + 0.2
         }
         
         let mut interface = Interface::new(atlas);
+
+        let mut header = Panel::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 0.02))
+            .with_color("#0d1117");
+        
+        let element1 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(0.025, 1.0), "solid")
+            .with_color("#0d1117")
+            .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Center }, "Test", 0.7)
+            .with_fn(|| Some(GuiEvent::ChangeLayoutToProjectView), InteractionStyle::OnClick);
+
+        header.add_element(element1);
+
+        interface.add_panel(header);
 
         interface.add_panel(panel);
 
@@ -176,16 +192,51 @@ impl ApplicationHandler<RenderState> for EditorApp {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_position = Some(position);
+                let mut needs_state_update = false;
+
+                let mut interface_guard = self.interface.lock().unwrap();
+
+                let current_hovered = interface_guard.handle_interaction(position, current_window_size, InteractionStyle::OnHover);
+
+                let current_index= if let Some((_, index)) = current_hovered {
+                    Some(index)
+                } else {
+                    None
+                };
+
+                if self.last_hovered_element_index != current_index {
+                    if let Some((panel_idx, element_idx)) = self.last_hovered_element_index {
+                        if panel_idx < interface_guard.panels.len() && element_idx < interface_guard.panels[panel_idx].elements.len() {
+                            let element = &mut interface_guard.panels[panel_idx].elements[element_idx];
+                            element.color = element.original_color.clone();
+                        }
+                    }
+
+                    if let Some((_event, (panel_idx, element_idx))) = current_hovered {
+                        let element = &mut interface_guard.panels[panel_idx].elements[element_idx];
+                        element.with_temp_color("#999999ff");
+                    }
+
+                    self.last_hovered_element_index = current_index;
+                    needs_state_update = true;
+                }
+
+                if needs_state_update {
+                    if let Some(rs) = self.render_state.as_mut() {
+                        interface_guard.update_vertices_and_queue_text(rs.size, &rs.queue, &rs.device);
+                        needs_redraw = true;
+                    }
+                }
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 if button == MouseButton::Left && state.is_pressed() {
                     if let Some(cursor_pos) = self.cursor_position {
                         let gui_event = {
                             let mut interface_guard = self.interface.lock().unwrap();
-                            interface_guard.handle_interaction(cursor_pos, current_window_size)
+                            interface_guard.handle_interaction(cursor_pos, current_window_size, InteractionStyle::OnClick)
                         };
 
-                        if let Some(event) = gui_event {
+                        if let Some((event, _index)) = gui_event {
                             println!("Received GUI event: {:?}", event);
                             match event {
                                 GuiEvent::ChangeLayoutToFileExplorer => {
@@ -193,10 +244,18 @@ impl ApplicationHandler<RenderState> for EditorApp {
                                         needs_layout_change = Some(GuiPageState::FileExplorer);
                                     }
                                 }
+                                GuiEvent::ChangeLayoutToProjectView => {
+                                    if self.layout != GuiPageState::ProjectView {
+                                        needs_layout_change = Some(GuiPageState::ProjectView);
+                                    }
+                                }
                                 GuiEvent::DisplaySettingsMenu => {
                                     if self.menu_open != (true, Some(GuiMenuState::SettingsMenu)) {
                                         needs_menu_change = Some((true, Some(GuiMenuState::SettingsMenu)));
                                     }
+                                }
+                                GuiEvent::Highlight => {
+
                                 }
                             }
                             needs_redraw = true;

@@ -1,3 +1,5 @@
+use core::f64;
+
 use glam::{Vec2, Vec3};
 
 #[allow(dead_code)]
@@ -96,10 +98,68 @@ impl UiAtlasTexture {
     }
 }
 
-#[derive(Debug)]
+pub trait ColorExt {
+    fn from_hex(hex: &str) -> Self;
+    fn srgb_correction(x: f64, y: f64, z: f64) -> (f64, f64, f64);
+}
+
+impl ColorExt for wgpu::Color {
+    fn from_hex(hex_color: &str) -> Self {
+        if let Some(hex) = hex_color.strip_prefix("#") {
+            let mut chars = hex.chars();
+            let red: String = [chars.next().unwrap(), chars.next().unwrap()].iter().collect() ;
+            let green: String = [chars.next().unwrap(), chars.next().unwrap()].iter().collect();
+            let blue: String = [chars.next().unwrap(), chars.next().unwrap()].iter().collect();
+
+            let red_value = u32::from_str_radix(&red, 16).unwrap() as f64 / 255.0;
+            let green_value = u32::from_str_radix(&green, 16).unwrap() as f64 / 255.0;
+            let blue_value = u32::from_str_radix(&blue, 16).unwrap() as f64 / 255.0;
+
+            let (corrected_r, corrected_g, corrected_b) = Self::srgb_correction(red_value, green_value, blue_value);
+            
+            Self {
+                r: corrected_r,
+                g: corrected_g,
+                b: corrected_b,
+                a: 1.0,
+            }
+        } else {
+        log::error!("Provided parameter was not hex!");
+        panic!()
+    }
+}
+
+        fn srgb_correction(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
+        let mut linear_color = (0.0, 0.0, 0.0);
+
+        if x <= 0.04045 {
+            linear_color.0 = x / 12.92;
+        } else {
+            linear_color.0 = ((x + 0.055) / 1.055).powf(2.4);
+        }
+
+        if y <= 0.04045 {
+            linear_color.1 = y / 12.92;
+        } else {
+            linear_color.1 = ((y + 0.055) / 1.055).powf(2.4);
+        }
+
+        if z <= 0.04045 {
+            linear_color.2 = z / 12.92;
+        } else {
+            linear_color.2 = ((z + 0.055) / 1.055).powf(2.4);
+        }
+
+        linear_color
+    }
+}
+
+#[derive(PartialEq, Debug, Clone)]
 pub enum GuiEvent {
     ChangeLayoutToFileExplorer,
-    DisplaySettingsMenu
+    ChangeLayoutToProjectView,
+    DisplaySettingsMenu,
+    Highlight
 }
 
 #[derive(PartialEq, Debug, Clone)]
@@ -111,4 +171,10 @@ pub enum GuiPageState {
 #[derive(PartialEq, Debug, Clone)]
 pub enum GuiMenuState {
     SettingsMenu
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum InteractionStyle {
+    OnClick,
+    OnHover
 }
