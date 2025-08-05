@@ -74,7 +74,8 @@ impl EditorApp {
         let element1 = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(0.025, 1.0), "solid")
             .with_color("#0d1117")
             .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Center }, "File", 0.7)
-            .with_fn(|| Some(GuiEvent::Highlight), InteractionStyle::OnHover);
+            .with_fn(|| Some(GuiEvent::Highlight), InteractionStyle::OnHover)
+            .with_fn(|| Some(GuiEvent::DisplaySettingsMenu), InteractionStyle::OnClick);
 
         header.add_element(element1);
 
@@ -87,14 +88,23 @@ impl EditorApp {
         .map(|res| res.map(|e| e.path()))
         .collect::<Result<Vec<_>, io::Error>>().unwrap();
 
-        let mut panel = Panel::new(Coordinate::new(0.2, 0.1), Coordinate::new(0.8, 0.9));
+        let mut panel = Panel::new(Coordinate::new(0.2, 0.1), Coordinate::new(0.8, 0.9))
+            .with_color("#161b22");
         let mut last_coordinate = Coordinate::new(0.0, 0.0);
         for file in entries {
             println!("{} {}", last_coordinate.x, last_coordinate.y);
-            let element = Element::new(Coordinate::new(0.0, last_coordinate.y), Coordinate::new(1.0, last_coordinate.y + 0.2), "")
-                .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Center}, file.file_name().unwrap().to_str().unwrap(), 0.5);
+            let file_image = Element::new(Coordinate::new(0.01 + 0.005, last_coordinate.y + 0.005), Coordinate::new(0.04 - 0.005, last_coordinate.y + 0.03 - 0.005), "folder-1484");
+            let buffer_space = Element::new(Coordinate::new(0.0, last_coordinate.y), Coordinate::new(0.04, last_coordinate.y + 0.03), "solid")
+                .with_color("#0d1117");
+
+            let element = Element::new(Coordinate::new(0.04, last_coordinate.y), Coordinate::new(1.0, last_coordinate.y + 0.03), "solid")
+                .with_color("#0d1117")
+                .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Left}, file.file_name().unwrap().to_str().unwrap(), 0.8);
+
             panel.add_element(element);
-            last_coordinate.y = last_coordinate.y + 0.2
+            panel.add_element(buffer_space);
+            panel.add_element(file_image);
+            last_coordinate.y = last_coordinate.y + 0.04
         }
         
         let mut interface = Interface::new(atlas);
@@ -118,8 +128,12 @@ impl EditorApp {
 
     fn display_settings_menu(mut interface: Interface) -> Interface {
         let element = Element::new(Coordinate::new(0.0, 0.0), Coordinate::new(1.0, 1.0), "solid")
-            .with_color("#ff0000ff");
-        let mut settings_panel = Panel::new(Coordinate::new(0.4, 0.4), Coordinate::new(0.6, 0.6));
+            .with_color("#0d1117")
+            .with_fn(|| Some(GuiEvent::Highlight), InteractionStyle::OnHover)
+            .with_fn(|| Some(GuiEvent::ChangeLayoutToFileExplorer), InteractionStyle::OnClick)
+            .with_text(Alignment { vertical: VerticalAlignment::Center, horizontal: HorizontalAlignment::Left }, "New", 0.7);
+
+        let mut settings_panel = Panel::new(Coordinate::new(0.0, 0.02), Coordinate::new(0.1, 0.04));
         settings_panel.add_element(element);
         interface.add_panel(settings_panel);
         interface
@@ -204,6 +218,11 @@ impl ApplicationHandler<RenderState> for EditorApp {
                     None
                 };
 
+                if self.menu_open != (false, None) && !interface_guard.is_cursor_within_menu_panel_bounds(position, current_window_size) {
+                    self.menu_open = (false, None);
+                    needs_menu_change = Some((false, None))
+                }
+
                 if self.last_hovered_element_index != current_index {
                     if let Some((panel_idx, element_idx)) = self.last_hovered_element_index {
                         if panel_idx < interface_guard.panels.len() && element_idx < interface_guard.panels[panel_idx].elements.len() {
@@ -241,6 +260,7 @@ impl ApplicationHandler<RenderState> for EditorApp {
                             match event {
                                 GuiEvent::ChangeLayoutToFileExplorer => {
                                     if self.layout != GuiPageState::FileExplorer {
+                                        self.menu_open = (false, None);
                                         needs_layout_change = Some(GuiPageState::FileExplorer);
                                     }
                                 }

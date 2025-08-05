@@ -61,6 +61,18 @@ impl Interface {
         None
     }
 
+    pub fn is_cursor_within_menu_panel_bounds(&self, position: PhysicalPosition<f64>, screen_size: PhysicalSize<u32>) -> bool {
+        let x_position = position.x as f32 / screen_size.width as f32;
+        let y_position = position.y as f32 / screen_size.height as f32;
+
+        for panel in self.panels.iter() {
+            if x_position >= panel.start_coordinate.x && x_position <= panel.end_coordinate.x &&
+            y_position >= panel.start_coordinate.y && y_position <= panel.end_coordinate.y {
+                return true;
+            }
+        } false
+    }
+
     pub fn reset_all_element_colors(&mut self) {
         for panel in &mut self.panels {
             for element in &mut panel.elements {
@@ -264,7 +276,7 @@ impl Interface {
                 let half_y_length = ((py_1 - ey_0 * (py_1 - py_0)) - (py_1 - ey_1 * (py_1 - py_0))) / 2.0;
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
                 let y = screen_y_center - (py_1 - ey_0 * (py_1 - py_0));
-                return ((x, y + half_y_length - 30.0), scale);
+                return ((x + (15.0 * text.1), y + half_y_length - (15.0 * text.1)), scale);
             }
             (HorizontalAlignment::Left, VerticalAlignment::Bottom) => {
                 let x = screen_x_center + (px_0 + ex_0 * (px_1 - px_0));
@@ -395,7 +407,7 @@ pub struct Panel {
     end_coordinate: Coordinate,
     renderable: bool,
     texture_name: String,
-    color: Color
+    color: Color,
 }
 
 impl Panel {
@@ -406,7 +418,7 @@ impl Panel {
             end_coordinate,
             renderable: false,
             texture_name: "solid".to_string(),
-            color: Color::from_hex("#ffffffff")
+            color: Color::from_hex("#ffffffff"),
         }
     }
 
